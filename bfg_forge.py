@@ -321,15 +321,7 @@ class AssignMaterial(bpy.types.Operator):
 	bl_label = "Assign"
 	where = bpy.props.StringProperty(name="where", default='ALL')
 	
-	def execute(self, context):
-		obj = context.active_object
-		if not obj:
-			return {'FINISHED'}
-		if obj.mode == 'EDIT':
-			return {'FINISHED'} # TODO: handle assigning to faces
-		mat = get_active_material(context)
-		if not mat:
-			return {'FINISHED'}
+	def assign(self, obj, mat):
 		if obj.bfg.type == 'PLANE':
 			if self.where == 'CEILING' or self.where == 'ALL':
 				obj.bfg.ceiling_material = mat.name
@@ -343,6 +335,19 @@ class AssignMaterial(bpy.types.Operator):
 				obj.data.materials[0] = mat
 			else:
 				obj.data.materials.append(mat)
+	
+	def execute(self, context):
+		obj = context.active_object
+		if not obj:
+			return {'FINISHED'}
+		if obj.mode == 'EDIT':
+			return {'FINISHED'} # TODO: handle assigning to faces
+		mat = get_active_material(context)
+		if not mat:
+			return {'FINISHED'}
+		self.assign(obj, mat)
+		for s in context.selected_objects:
+			self.assign(s, mat)
 		return {'FINISHED'}
 		
 class EntityPropGroup(bpy.types.PropertyGroup):
