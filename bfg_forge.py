@@ -159,7 +159,10 @@ class MaterialDeclPathPropGroup(bpy.types.PropertyGroup):
 					
 class MaterialDeclPropGroup(bpy.types.PropertyGroup):
 	# name property inherited
+	diffuse_texture = bpy.props.StringProperty()
 	editor_texture = bpy.props.StringProperty()
+	normal_texture = bpy.props.StringProperty()
+	specular_texture = bpy.props.StringProperty()
 	
 def material_decl_preview_items(self, context):
 	materials = []
@@ -193,26 +196,11 @@ class ImportMaterials(bpy.types.Operator):
 		self.num_materials_created = 0
 		self.num_materials_updated = 0
 	
-	def import_material_decl(self, name, editor_texture):
-		result = 'NOP'
-		scene = bpy.context.scene
-	
-		# create the material decl if it doesn't exist
-		if name in scene.bfg.material_decls:
-			decl = scene.bfg.material_decls[name]
-			result = 'UPDATE'
-		else:
-			result = 'NEW'
-			decl = scene.bfg.material_decls.add()
-			decl.name = name
-		
-		decl.editor_texture = editor_texture
-		return result
-			
 	def parse_material_file(self, search_path, filename):
 		lex = Lexer(filename)
 		num_materials_created = 0
 		num_materials_updated = 0
+		scene = bpy.context.scene
 		print("Parsing", os.path.basename(filename), "...", end="", flush=True)
 		while True:
 			token = lex.parse_token()
@@ -223,9 +211,16 @@ class ImportMaterials(bpy.types.Operator):
 				lex.skip_bracket_delimiter_section("{", "}")
 			else:
 				if token == "material":
-					token = lex.parse_token()
-				name = token
-				editor_texture = "" # string properties can't be None
+					name = lex.parse_token()
+				else:
+					name = token
+				if name in scene.bfg.material_decls:
+					decl = scene.bfg.material_decls[name]
+					num_materials_updated += 1
+				else:
+					num_materials_created += 1
+					decl = scene.bfg.material_decls.add()
+					decl.name = name
 				lex.expect_token("{")
 				num_required_closing = 1
 				while True:
@@ -238,13 +233,14 @@ class ImportMaterials(bpy.types.Operator):
 						num_required_closing -= 1
 						if num_required_closing == 0:
 							break
+					elif token == "bumpmap":
+						decl.normal_texture = lex.parse_token()
+					elif token == "diffusemap":
+						decl.diffuse_texture = lex.parse_token()
 					elif token == "qer_editorimage":
-						editor_texture = lex.parse_token()
-				result = self.import_material_decl(name, editor_texture)
-				if result == 'NEW':
-					num_materials_created += 1
-				elif result == 'UPDATE':
-					num_materials_updated += 1
+						decl.editor_texture = lex.parse_token()
+					elif token == "specularmap":
+						decl.specular_texture = lex.parse_token()
 		print(" %d materials" % num_materials_created)
 		return (num_materials_created, num_materials_updated)
 		
