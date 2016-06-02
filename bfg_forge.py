@@ -399,7 +399,7 @@ class AssignMaterial(bpy.types.Operator):
 	
 	def execute(self, context):
 		obj = context.active_object
-		if not obj:
+		if not obj or not hasattr(obj.data, "materials"):
 			return {'FINISHED'}
 		if obj.mode == 'EDIT':
 			return {'FINISHED'} # TODO: handle assigning to faces
@@ -1051,7 +1051,7 @@ class MaterialPanel(bpy.types.Panel):
 			col.prop_search(scene.bfg, "active_material_decl_path", scene.bfg, "material_decl_paths", "", icon='MATERIAL_DATA')
 			col.template_icon_view(scene.bfg, "active_material_decl")
 			col.prop(scene.bfg, "active_material_decl", "")
-			if context.active_object and len(context.selected_objects) > 0:
+			if context.active_object and len(context.selected_objects) > 0 and hasattr(context.active_object.data, "materials"):
 				if context.active_object.bfg.type == 'PLANE':
 					col.label("Assign:", icon='MATERIAL_DATA')
 					row = col.row(align=True)
