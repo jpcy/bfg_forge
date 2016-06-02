@@ -187,6 +187,7 @@ def material_decl_preview_items(self, context):
 						preview = pcoll.load(basename, filename, 'IMAGE')
 			materials.append((basename, basename, "", preview.icon_id if preview else 0, i))
 			i += 1
+	materials.sort()
 	pcoll.materials = materials
 	pcoll.current_decl_path = context.scene.bfg.active_material_decl_path
 	pcoll.force_refresh = False
