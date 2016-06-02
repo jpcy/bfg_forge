@@ -30,8 +30,8 @@ from mathutils import Vector
 import os
 
 class Lexer:
-	valid_token_chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_/\\-.,&:"
-	valid_single_tokens = "{}[]()+-*/%!=<>"
+	valid_token_chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_/\\-.&:"
+	valid_single_tokens = "{}[]()+-*/%!=<>,"
 
 	def __init__(self, filename):
 		self.line, self.pos = 1, 0
@@ -161,6 +161,7 @@ class MaterialDeclPropGroup(bpy.types.PropertyGroup):
 	# name property inherited
 	diffuse_texture = bpy.props.StringProperty()
 	editor_texture = bpy.props.StringProperty()
+	heightmap_scale = bpy.props.FloatProperty() # 0 if normal_texture isn't a heightmap
 	normal_texture = bpy.props.StringProperty()
 	specular_texture = bpy.props.StringProperty()
 	
@@ -195,7 +196,15 @@ class ImportMaterials(bpy.types.Operator):
 	def __init__(self):
 		self.num_materials_created = 0
 		self.num_materials_updated = 0
-	
+		
+	def parse_heightmap(self, decl, lex):
+		lex.expect_token("(")
+		texture = lex.parse_token()
+		lex.expect_token(",")
+		scale = float(lex.parse_token())
+		lex.expect_token(")")
+		return (texture, scale)
+
 	def parse_material_file(self, search_path, filename):
 		lex = Lexer(filename)
 		num_materials_created = 0
@@ -225,6 +234,7 @@ class ImportMaterials(bpy.types.Operator):
 				num_required_closing = 1
 				in_stage = False
 				stage_blend = None
+				stage_heightmap_scale = 0
 				stage_texture = None 
 				while True:
 					token = lex.parse_token()
@@ -236,6 +246,7 @@ class ImportMaterials(bpy.types.Operator):
 							# 2nd opening brace: now in a stage
 							in_stage = True
 							stage_blend = None
+							stage_heightmap_scale = 0
 							stage_texture = None
 					elif token == "}":
 						num_required_closing -= 1
@@ -246,26 +257,35 @@ class ImportMaterials(bpy.types.Operator):
 							in_stage = False
 							if stage_blend and stage_texture:
 								if stage_blend.lower() == "bumpmap":
-									decl.diffuse_texture = stage_texture
-								elif stage_blend.lower() == "diffusemap":
 									decl.normal_texture = stage_texture
+									decl.heightmap_scale = stage_heightmap_scale
+								elif stage_blend.lower() == "diffusemap":
+									decl.diffuse_texture = stage_texture
 								elif stage_blend.lower() == "specularmap":
 									decl.specular_texture = stage_texture
 					if in_stage:
 						if token.lower() == "blend":
 							stage_blend = lex.parse_token()
 						elif token.lower() == "map":
-							stage_texture = lex.parse_token()
+							token = lex.parse_token()
+							if token.lower() == "heightmap":
+								(stage_texture, stage_heightmap_scale) = self.parse_heightmap(decl, lex)
+							else:
+								stage_texture = token
 					else:
 						if token.lower() == "bumpmap":
-							decl.normal_texture = lex.parse_token()
+							token = lex.parse_token()
+							if token.lower() == "heightmap":
+								(decl.normal_texture, decl.heightmap_scale) = self.parse_heightmap(decl, lex)
+							else:
+								decl.normal_texture = token
 						elif token.lower() == "diffusemap":
 							decl.diffuse_texture = lex.parse_token()
 						elif token.lower() == "qer_editorimage":
 							decl.editor_texture = lex.parse_token()
 						elif token.lower() == "specularmap":
 							decl.specular_texture = lex.parse_token()
-		print(" %d materials" % num_materials_created)
+		print(" %d materials" % (num_materials_created + num_materials_updated))
 		return (num_materials_created, num_materials_updated)
 		
 	def update_material_decl_paths(self, scene):
@@ -426,7 +446,7 @@ class ImportEntities(bpy.types.Operator):
 						entity.maxs = lex.parse_token()
 					elif token == "editor_usage":
 						entity.usage = lex.parse_token()
-		print(" %d entities" % num_entities_created)
+		print(" %d entities" % (num_entities_created + num_entities_updated))
 		return (num_entities_created, num_entities_updated)
 	
 	def execute(self, context):
