@@ -828,6 +828,36 @@ class AddEntity(bpy.types.Operator):
 			bpy.ops.transform.translate(value=origin)
 			bpy.ops.object.editmode_toggle()
 		return {'FINISHED'}
+		
+class AddLight(bpy.types.Operator):
+	bl_idname = "scene.add_light"
+	bl_label = "Add Light"
+	
+	def execute(self, context):
+		scale = 64.0
+		if context.active_object:
+			bpy.ops.object.mode_set(mode='OBJECT')
+		bpy.ops.object.select_all(action='DESELECT')
+		data = bpy.data.lamps.new(name="Light", type='POINT')
+		obj = bpy.data.objects.new(name="Light", object_data=data)
+		context.scene.objects.link(obj)
+		obj.select = True
+		context.scene.objects.active = obj
+		obj.data.distance = 300.0 / scale
+		obj.data.energy = obj.data.distance
+		#obj.scale = obj.distance
+		#obj.show_bounds = True
+		#obj.draw_bounds_type = 'SPHERE'
+		obj.data.use_sphere = True
+		link_active_object_to_group("lights")
+		return {'FINISHED'}
+		
+def get_light_radius(self):
+	return self.data.distance
+	
+def set_light_radius(self, value):
+	self.data.distance = value
+	self.data.energy = value
 
 class AutoUnwrap(bpy.types.Operator):
 	bl_idname = "object.auto_uv_unwrap"
@@ -1026,6 +1056,7 @@ class CreatePanel(bpy.types.Panel):
 				if usage:
 					col.label(usage)
 				col.operator(AddEntity.bl_idname, AddEntity.bl_label, icon='POSE_HLT')
+		col.operator(AddLight.bl_idname, AddLight.bl_label, icon='LAMP_POINT')
 		
 class MapPanel(bpy.types.Panel):
 	bl_label = "Map"
@@ -1072,7 +1103,10 @@ class ObjectPanel(bpy.types.Panel):
 		obj = context.active_object
 		if obj and len(context.selected_objects) > 0:
 			col = self.layout.column(align=True)
-			col.label(obj.name, icon='OBJECT_DATAMODE')
+			obj_icon = 'OBJECT_DATAMODE'
+			if obj.type == 'LAMP':
+				obj_icon = 'LAMP_POINT'
+			col.label(obj.name, icon=obj_icon)
 			if obj.bfg.type == 'PLANE' and obj.modifiers:
 				mod = obj.modifiers[0]
 				if mod.type == 'SOLIDIFY':
@@ -1092,6 +1126,13 @@ class ObjectPanel(bpy.types.Panel):
 					row.operator(CopyRoom.bl_idname, "Wall").copy_op = 'MATERIAL_WALL'
 					row.operator(CopyRoom.bl_idname, "Floor").copy_op = 'MATERIAL_FLOOR'
 					row.operator(CopyRoom.bl_idname, "All").copy_op = 'MATERIAL_ALL'
+			elif obj.type == 'LAMP':
+				col.separator()
+				sub = col.row()
+				sub.prop(obj, "bfg_light_radius")
+				sub.prop(obj.data, "color", "")
+				col.prop(obj.data, "use_specular")
+				col.prop(obj.data, "use_diffuse")
 
 class UvPanel(bpy.types.Panel):
 	bl_label = "UV"
@@ -1151,13 +1192,6 @@ class ExportMap(bpy.types.Operator, ExportHelper):
 	bl_options = {'PRESET'}
 	filename_ext = ".map"
 	scale = bpy.props.FloatProperty(name="Scale", default=64, min=1, max=1024)
-	
-	def write_entity(self, f, entity):
-		f.write("{\n")
-		f.write("\"classname\" \"%s\"\n" % entity.bfg.classname)
-		f.write("\"name\" \"%s\"\n" % entity.name)
-		f.write("\"origin\" \"%s %s %s\"\n" % (ftos(entity.location[0] * self.scale), ftos(entity.location[1] * self.scale), ftos(entity.location[2] * self.scale)))
-		f.write("}\n")
 	
 	def write_mesh(self, f, object, mesh):
 		# vertex position and normal are decoupled from uvs
@@ -1229,8 +1263,23 @@ class ExportMap(bpy.types.Operator, ExportHelper):
 			# entity 1
 			for obj in context.scene.objects:
 				if obj.bfg.type == 'ENTITY':
-					self.write_entity(f, obj)
-							
+					f.write("{\n")
+					f.write("\"classname\" \"%s\"\n" % obj.bfg.classname)
+					f.write("\"name\" \"%s\"\n" % obj.name)
+					f.write("\"origin\" \"%s %s %s\"\n" % (ftos(obj.location[0] * self.scale), ftos(obj.location[1] * self.scale), ftos(obj.location[2] * self.scale)))
+					f.write("}\n")
+				if obj.type == 'LAMP':
+					f.write("{\n")
+					f.write('"classname" "light"\n')
+					f.write('"name" "%s"\n' % obj.name)
+					f.write('"origin" "%s %s %s"\n' % (ftos(obj.location[0] * self.scale), ftos(obj.location[1] * self.scale), ftos(obj.location[2] * self.scale)))
+					f.write('"light_center" "0 0 0"\n')
+					radius = ftos(obj.data.distance * self.scale)
+					f.write('"light_radius" "%s %s %s"\n' % (radius, radius, radius))
+					f.write('"_color" "%s %s %s"\n' % (ftos(obj.data.color[0]), ftos(obj.data.color[1]), ftos(obj.data.color[2])))
+					f.write('"nospecular" "%d"\n' % 0 if obj.data.use_specular else 1)
+					f.write('"nodiffuse" "%d"\n' % 0 if obj.data.use_diffuse else 1)
+					f.write("}\n")
 			f.close()
 		return {'FINISHED'}
 	
@@ -1277,6 +1326,8 @@ def register():
 	bpy.types.INFO_MT_file_export.append(menu_func_export)
 	bpy.types.Scene.bfg = bpy.props.PointerProperty(type=BfgScenePropertyGroup)
 	bpy.types.Object.bfg = bpy.props.PointerProperty(type=BfgObjectPropertyGroup)
+	# not in BfgObjectPropertyGroup because get/set self object would be BfgObjectPropertyGroup, not bpy.types.Object
+	bpy.types.Object.bfg_light_radius = bpy.props.FloatProperty(name="Radius", get=get_light_radius, set=set_light_radius)
 	pcoll = bpy.utils.previews.new()
 	pcoll.materials = ()
 	pcoll.current_decl_path = ""
@@ -1288,6 +1339,7 @@ def unregister():
 	bpy.types.INFO_MT_file_export.remove(menu_func_export)
 	del bpy.types.Scene.bfg
 	del bpy.types.Object.bfg
+	del bpy.types.Object.bfg_light_radius
 	for pcoll in preview_collections.values():
 		bpy.utils.previews.remove(pcoll)
 	preview_collections.clear()
