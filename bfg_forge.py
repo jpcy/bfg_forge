@@ -329,7 +329,7 @@ def get_active_material(context):
 		mat = bpy.data.materials[decl.name]
 	else:
 		mat = bpy.data.materials.new(decl.name)
-		mat.use_shadeless = True
+		mat.use_shadeless = context.scene.bfg.shadeless_materials
 	
 	if decl.editor_texture != "":
 		# textures may be shared between materials, so don't create one that already exists
@@ -481,6 +481,11 @@ def update_show_entity_names(self, context):
 			
 def update_hide_bad_materials(self, context):
 	preview_collections["main"].force_refresh = True
+	
+def update_shadeless_materials(self, context):
+	for mat in bpy.data.materials:
+		if mat.name != "_object_color":
+			mat.use_shadeless = context.scene.bfg.shadeless_materials
 
 def update_room_plane_modifier(obj):
 	if obj.modifiers:
@@ -979,6 +984,7 @@ class SettingsPanel(bpy.types.Panel):
 		col.prop(scene.bfg, "wireframe_rooms")
 		col.prop(scene.bfg, "show_entity_names")
 		col.prop(scene.bfg, "hide_bad_materials")
+		col.prop(scene.bfg, "shadeless_materials")
 		
 class CreatePanel(bpy.types.Panel):
 	bl_label = "Create"
@@ -1219,6 +1225,7 @@ class BfgScenePropertyGroup(bpy.types.PropertyGroup):
 	wireframe_rooms = bpy.props.BoolProperty(name="Wireframe rooms", default=True, update=update_wireframe_rooms)
 	show_entity_names = bpy.props.BoolProperty(name="Show entity names", default=False, update=update_show_entity_names)
 	hide_bad_materials = bpy.props.BoolProperty(name="Hide bad materials", description="Hide materials with missing diffuse textures", default=True, update=update_hide_bad_materials)
+	shadeless_materials = bpy.props.BoolProperty(name="Fullbright materials", description="Disable lighting on materials", default=True, update=update_shadeless_materials)
 	map_layer = bpy.props.IntProperty(name="Layer", default=0, min=0, max=19)
 	material_decl_paths = bpy.props.CollectionProperty(type=MaterialDeclPathPropGroup)
 	active_material_decl_path = bpy.props.StringProperty(name="", default="")
