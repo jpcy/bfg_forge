@@ -223,24 +223,48 @@ class ImportMaterials(bpy.types.Operator):
 					decl.name = name
 				lex.expect_token("{")
 				num_required_closing = 1
+				in_stage = False
+				stage_blend = None
+				stage_texture = None 
 				while True:
 					token = lex.parse_token()
 					if token == None:
 						break
 					elif token == "{":
 						num_required_closing += 1
+						if num_required_closing == 2:
+							# 2nd opening brace: now in a stage
+							in_stage = True
+							stage_blend = None
+							stage_texture = None
 					elif token == "}":
 						num_required_closing -= 1
 						if num_required_closing == 0:
 							break
-					elif token == "bumpmap":
-						decl.normal_texture = lex.parse_token()
-					elif token == "diffusemap":
-						decl.diffuse_texture = lex.parse_token()
-					elif token == "qer_editorimage":
-						decl.editor_texture = lex.parse_token()
-					elif token == "specularmap":
-						decl.specular_texture = lex.parse_token()
+						elif num_required_closing == 1:
+							# one closing brace left: closing stage
+							in_stage = False
+							if stage_blend and stage_texture:
+								if stage_blend.lower() == "bumpmap":
+									decl.diffuse_texture = stage_texture
+								elif stage_blend.lower() == "diffusemap":
+									decl.normal_texture = stage_texture
+								elif stage_blend.lower() == "specularmap":
+									decl.specular_texture = stage_texture
+					if in_stage:
+						if token.lower() == "blend":
+							stage_blend = lex.parse_token()
+						elif token.lower() == "map":
+							stage_texture = lex.parse_token()
+					else:
+						if token.lower() == "bumpmap":
+							decl.normal_texture = lex.parse_token()
+						elif token.lower() == "diffusemap":
+							decl.diffuse_texture = lex.parse_token()
+						elif token.lower() == "qer_editorimage":
+							decl.editor_texture = lex.parse_token()
+						elif token.lower() == "specularmap":
+							decl.specular_texture = lex.parse_token()
 		print(" %d materials" % num_materials_created)
 		return (num_materials_created, num_materials_updated)
 		
