@@ -13,15 +13,14 @@ Requires:
 
 DONE:
 * Basic material decl and entity def parsing
-* Selectable material decl with preview image and icon
-* Create material from decl - using qer_editorimage for now
+* Selectable material decl with preview image and icons
+* Create material from decl
 * Create entities - only fixed size ones for now
 * Use Level Buddy for quickly building a mesh - similar to subtractive and additive brushes
 * Use Texture Buddy for simple automatic UV unwrap
 * Basic exporter - only the built map mesh and entities with origin for now
 
 TODO:
-* Create materials using diffuse/normal/specular instead of qer_editorimage
 * Cycles materials
 * Entity properties
 * Lights

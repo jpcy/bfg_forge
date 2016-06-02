@@ -318,48 +318,65 @@ class ImportMaterials(bpy.types.Operator):
 			self.report({'ERROR'}, "RBDOOM-3-BFG path not set")
 		return {'FINISHED'}
 		
+def create_material_texture(fs, mat, texture, slot_number):
+	# textures may be shared between materials, so don't create one that already exists
+	if texture in bpy.data.textures:
+		tex = bpy.data.textures[texture]
+	else:
+		tex = bpy.data.textures.new(texture, type='IMAGE')
+		
+	# texture image may have changed
+	img_filename = fs.find_file_path(texture)
+	if img_filename:
+		img_filename = bpy.path.relpath(img_filename) # use relative path for image filenames
+	if not tex.image or tex.image.filepath != img_filename:
+		try:
+			img = bpy.data.images.load(img_filename)
+		except:
+			pass
+		else:
+		   tex.image = img	 
+	
+	# update/create the texture slot
+	if not mat.texture_slots[slot_number] or not mat.texture_slots[slot_number].name == texture:
+		texSlot = mat.texture_slots.create(slot_number)
+		texSlot.texture_coords = 'UV'
+		texSlot.texture = tex
+	
+	return (tex, mat.texture_slots[slot_number])
+		
+def create_material(decl):
+	if decl.name in bpy.data.materials:
+		mat = bpy.data.materials[decl.name]
+	else:
+		mat = bpy.data.materials.new(decl.name)
+	mat.use_shadeless = bpy.context.scene.bfg.shadeless_materials
+	fs = FileSystem()
+	if decl.diffuse_texture != "":
+		create_material_texture(fs, mat, decl.diffuse_texture, 0)
+	if decl.normal_texture != "":
+		(tex, slot) = create_material_texture(fs, mat, decl.normal_texture, 1)
+		slot.use_map_color_diffuse = False
+		if decl.heightmap_scale > 0:
+			slot.use_map_displacement = True
+			slot.displacement_factor = decl.heightmap_scale
+		else:
+			tex.use_normal_map = True
+			slot.use_map_normal = True
+	if decl.specular_texture != "":
+		(_, slot) = create_material_texture(fs, mat, decl.specular_texture, 2)
+		slot.use_map_color_diffuse = False
+		slot.use_map_color_spec = True
+		slot.use_map_specular = True
+	return mat
+		
 def get_active_material(context):
 	bfg = context.scene.bfg
 	decl_name = bfg.active_material_decl_path + "/" + bfg.active_material_decl
 	if not decl_name in context.scene.bfg.material_decls:
 		return None
-	decl = context.scene.bfg.material_decls[decl_name]
+	return create_material(context.scene.bfg.material_decls[decl_name])	
 	
-	# create the material if it doesn't exist
-	if decl.name in bpy.data.materials:
-		mat = bpy.data.materials[decl.name]
-	else:
-		mat = bpy.data.materials.new(decl.name)
-		mat.use_shadeless = context.scene.bfg.shadeless_materials
-	
-	if decl.editor_texture != "":
-		# textures may be shared between materials, so don't create one that already exists
-		if decl.editor_texture in bpy.data.textures:
-			tex = bpy.data.textures[decl.editor_texture]
-		else:
-			tex = bpy.data.textures.new(decl.editor_texture, type='IMAGE')
-			
-		# texture image may have changed
-		fs = FileSystem()
-		img_filename = fs.find_file_path(decl.editor_texture)
-		if img_filename:
-			img_filename = bpy.path.relpath(img_filename) # use relative path for image filenames
-		if not tex.image or tex.image.filepath != img_filename:
-			try:
-				img = bpy.data.images.load(img_filename)
-			except:
-				pass
-			else:
-			   tex.image = img	 
-		
-		# update/create the texture slot
-		if not mat.texture_slots[0] or not mat.texture_slots[0].name == decl.editor_texture:
-			texSlot = mat.texture_slots.create(0)
-			texSlot.texture_coords = 'UV'
-			texSlot.texture = tex
-		
-	return mat
-		
 class AssignMaterial(bpy.types.Operator):
 	bl_idname = "scene.assign_material"
 	bl_label = "Assign"
