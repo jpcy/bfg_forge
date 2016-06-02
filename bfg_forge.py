@@ -168,12 +168,14 @@ class MaterialDeclPropGroup(bpy.types.PropertyGroup):
 def material_decl_preview_items(self, context):
 	materials = []
 	pcoll = preview_collections["main"]
-	if pcoll.current_decl_path == context.scene.bfg.active_material_decl_path:
+	if pcoll.current_decl_path == context.scene.bfg.active_material_decl_path and not pcoll.force_refresh:
 		return pcoll.materials
 	fs = FileSystem()
 	i = 0
 	for decl in context.scene.bfg.material_decls:
 		if os.path.dirname(decl.name) == context.scene.bfg.active_material_decl_path:
+			if context.scene.bfg.hide_bad_materials and (decl.diffuse_texture == "" or not fs.find_file_path(decl.diffuse_texture)):
+				continue # hide materials with missing diffuse texture
 			basename = os.path.basename(decl.name) # material name without the path
 			if basename in pcoll: # workaround blender bug, pcoll.load is supposed to return cached preview if name already exists
 				preview = pcoll[basename]
@@ -187,6 +189,7 @@ def material_decl_preview_items(self, context):
 			i += 1
 	pcoll.materials = materials
 	pcoll.current_decl_path = context.scene.bfg.active_material_decl_path
+	pcoll.force_refresh = False
 	return pcoll.materials
 					
 class ImportMaterials(bpy.types.Operator):
@@ -475,6 +478,9 @@ def update_show_entity_names(self, context):
 	for obj in context.scene.objects:
 		if obj.bfg.type == 'ENTITY':
 			obj.show_name = context.scene.bfg.show_entity_names
+			
+def update_hide_bad_materials(self, context):
+	preview_collections["main"].force_refresh = True
 
 def update_room_plane_modifier(obj):
 	if obj.modifiers:
@@ -972,6 +978,7 @@ class SettingsPanel(bpy.types.Panel):
 		col.operator(ImportEntities.bl_idname, ImportEntities.bl_label, icon='POSE_HLT')
 		col.prop(scene.bfg, "wireframe_rooms")
 		col.prop(scene.bfg, "show_entity_names")
+		col.prop(scene.bfg, "hide_bad_materials")
 		
 class CreatePanel(bpy.types.Panel):
 	bl_label = "Create"
@@ -1211,6 +1218,7 @@ class BfgScenePropertyGroup(bpy.types.PropertyGroup):
 	mod_dir = bpy.props.StringProperty(name="Mod Directory")
 	wireframe_rooms = bpy.props.BoolProperty(name="Wireframe rooms", default=True, update=update_wireframe_rooms)
 	show_entity_names = bpy.props.BoolProperty(name="Show entity names", default=False, update=update_show_entity_names)
+	hide_bad_materials = bpy.props.BoolProperty(name="Hide bad materials", description="Hide materials with missing diffuse textures", default=True, update=update_hide_bad_materials)
 	map_layer = bpy.props.IntProperty(name="Layer", default=0, min=0, max=19)
 	material_decl_paths = bpy.props.CollectionProperty(type=MaterialDeclPathPropGroup)
 	active_material_decl_path = bpy.props.StringProperty(name="", default="")
@@ -1247,6 +1255,7 @@ def register():
 	pcoll = bpy.utils.previews.new()
 	pcoll.materials = ()
 	pcoll.current_decl_path = ""
+	pcoll.force_refresh = False
 	preview_collections["main"] = pcoll
 
 def unregister():
