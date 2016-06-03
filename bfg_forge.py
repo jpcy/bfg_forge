@@ -396,10 +396,21 @@ class AssignMaterial(bpy.types.Operator):
 				obj.bfg.floor_material = mat.name
 			update_room_plane_materials(obj)
 		else:
-			if obj.data.materials:
+			if len(obj.data.materials) == 1:
+				# one slot: easy, just reassign
 				obj.data.materials[0] = mat
 			else:
+				obj.data.materials.clear()
 				obj.data.materials.append(mat)
+				
+				# there was more than one material slot on this object
+				# need to set material_index on all faces to 0
+				bm = bmesh.new()
+				bm.from_mesh(obj.data)
+				for f in bm.faces:
+					f.material_index = 0
+				bm.to_mesh(obj.data)
+				bm.free()
 	
 	def execute(self, context):
 		obj = context.active_object
@@ -428,9 +439,9 @@ class AssignMaterial(bpy.types.Operator):
 				bmesh.update_edit_mesh(obj.data)
 			#bm.free() # bmesh.from_edit_mesh returns garbage after this is called
 		else:
-			self.assign_to_object(obj, mat)
 			for s in context.selected_objects:
-				self.assign_to_object(s, mat)
+				if hasattr(s.data, "materials"):
+					self.assign_to_object(s, mat)
 		return {'FINISHED'}
 		
 class EntityPropGroup(bpy.types.PropertyGroup):
