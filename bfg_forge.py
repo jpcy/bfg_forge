@@ -187,8 +187,7 @@ def material_decl_preview_items(self, context):
 					filename = fs.find_file_path(decl.editor_texture)
 					if filename:
 						preview = pcoll.load(decl.editor_texture, filename, 'IMAGE')
-			basename = os.path.basename(decl.name) # material name without the path
-			materials.append((basename, basename, decl.name, preview.icon_id if preview else 0, i))
+			materials.append((decl.name, os.path.basename(decl.name), decl.name, preview.icon_id if preview else 0, i))
 			i += 1
 	materials.sort()
 	pcoll.materials = materials
@@ -378,10 +377,9 @@ def create_material(decl):
 		
 def get_active_material(context):
 	bfg = context.scene.bfg
-	decl_name = bfg.active_material_decl_path + "/" + bfg.active_material_decl
-	if not decl_name in context.scene.bfg.material_decls:
+	if not bfg.active_material_decl in context.scene.bfg.material_decls:
 		return None
-	return create_material(context.scene.bfg.material_decls[decl_name])	
+	return create_material(context.scene.bfg.material_decls[bfg.active_material_decl])	
 	
 class AssignMaterial(bpy.types.Operator):
 	bl_idname = "scene.assign_material"
