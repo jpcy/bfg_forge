@@ -420,7 +420,7 @@ class AssignMaterial(bpy.types.Operator):
 		if not mat:
 			return {'FINISHED'}
 		if obj.mode == 'EDIT':
-			# edit mode: assign to mesh faces
+			# edit mode: assign to selected mesh faces
 			bm = bmesh.from_edit_mesh(obj.data)
 			selected_faces = [f for f in bm.faces if f.select]
 			if len(selected_faces) > 0:
@@ -431,11 +431,33 @@ class AssignMaterial(bpy.types.Operator):
 						material_index = i
 						break
 				if material_index == -1:
-					# todo: remove any slots that are used exclusively by the selected faces, since they won't be needed anymore
 					obj.data.materials.append(mat)
 					material_index = len(obj.data.materials) - 1
+					
+				# assign to faces
 				for f in selected_faces:
 					f.material_index = material_index
+					
+				# remove any material slots that are now unused
+				# pop function update_data arg doesn't work, need to remap face material_index ourselves after removal
+				old_material_names = []
+				for m in obj.data.materials:
+					old_material_names.append(m.name)
+				remove_materials = []
+				for i, m in enumerate(obj.data.materials):
+					used = False
+					for f in bm.faces:
+						if f.material_index == i:
+							used = True
+							break
+					if not used:
+						remove_materials.append(m)
+				if len(remove_materials) > 0:
+					for m in remove_materials:
+						obj.data.materials.pop(obj.data.materials.find(m.name), True)
+				for f in bm.faces:
+					f.material_index = obj.data.materials.find(old_material_names[f.material_index])
+					
 				bmesh.update_edit_mesh(obj.data)
 			#bm.free() # bmesh.from_edit_mesh returns garbage after this is called
 		else:
