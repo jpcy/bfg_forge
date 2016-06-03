@@ -613,8 +613,8 @@ class AddRoom(bpy.types.Operator):
 		obj.modifiers['Solidify'].offset = 1
 		obj.modifiers['Solidify'].use_even_offset = True
 		obj.modifiers['Solidify'].use_quality_normals = True
-		obj.name = "room"
-		obj.data.name = "room"
+		obj.name = "room2D"
+		obj.data.name = "room2D"
 		obj.bfg.room_height = 4
 		obj.bfg.type = 'PLANE'
 		if context.scene.bfg.wireframe_rooms:
@@ -664,8 +664,12 @@ class AddBrush(bpy.types.Operator):
 		obj = context.active_object
 		if context.scene.bfg.wireframe_rooms:
 			obj.draw_type = 'WIRE'
-		obj.name = self.s_type
-		obj.data.name = self.s_type
+		if self.s_type == 'MESH':
+			obj.name = "room3D"
+			obj.data.name = "room3D"
+		else:
+			obj.name = "brush"
+			obj.data.name = "brush"
 		obj.bfg.type = self.s_type
 		mat = get_active_material(context)
 		if mat:
@@ -677,7 +681,10 @@ class AddBrush(bpy.types.Operator):
 		bpy.ops.object.editmode_toggle()
 		obj.game.physics_type = 'NO_COLLISION'
 		obj.hide_render = True
-		link_active_object_to_group("brushes")
+		if self.s_type == 'MESH':
+			link_active_object_to_group("rooms")
+		else:
+			link_active_object_to_group("brushes")
 		return {'FINISHED'}
 		
 class CopyRoom(bpy.types.Operator):
