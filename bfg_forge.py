@@ -496,6 +496,12 @@ def update_wireframe_rooms(self, context):
 		if obj.bfg.type in ['BRUSH', 'MESH', 'PLANE']:
 			obj.draw_type = 'WIRE' if context.scene.bfg.wireframe_rooms else 'TEXTURED'
 			
+def get_backface_culling(self):
+	return bpy.context.space_data.show_backface_culling
+	
+def set_backface_culling(self, value):
+	bpy.context.space_data.show_backface_culling = value
+			
 def update_show_entity_names(self, context):
 	for obj in context.scene.objects:
 		if obj.bfg.type == 'ENTITY':
@@ -1061,6 +1067,7 @@ class SettingsPanel(bpy.types.Panel):
 		col.operator(ImportMaterials.bl_idname, ImportMaterials.bl_label, icon='MATERIAL')
 		col.operator(ImportEntities.bl_idname, ImportEntities.bl_label, icon='POSE_HLT')
 		col.prop(scene.bfg, "wireframe_rooms")
+		col.prop(scene.bfg, "backface_culling")
 		col.prop(scene.bfg, "show_entity_names")
 		col.prop(scene.bfg, "hide_bad_materials")
 		col.prop(scene.bfg, "shadeless_materials")
@@ -1326,6 +1333,7 @@ class BfgScenePropertyGroup(bpy.types.PropertyGroup):
 	game_path = bpy.props.StringProperty(name="RBDOOM-3-BFG Path", subtype='DIR_PATH')
 	mod_dir = bpy.props.StringProperty(name="Mod Directory")
 	wireframe_rooms = bpy.props.BoolProperty(name="Wireframe rooms", default=True, update=update_wireframe_rooms)
+	backface_culling = bpy.props.BoolProperty(name="Backface Culling", get=get_backface_culling, set=set_backface_culling)
 	show_entity_names = bpy.props.BoolProperty(name="Show entity names", default=False, update=update_show_entity_names)
 	hide_bad_materials = bpy.props.BoolProperty(name="Hide bad materials", description="Hide materials with missing diffuse textures", default=True, update=update_hide_bad_materials)
 	shadeless_materials = bpy.props.BoolProperty(name="Fullbright materials", description="Disable lighting on materials", default=True, update=update_shadeless_materials)
