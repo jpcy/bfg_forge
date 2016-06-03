@@ -566,14 +566,6 @@ def flip_object_normals(obj):
 	bpy.ops.mesh.flip_normals()
 	bpy.ops.object.editmode_toggle()
 	
-def make_object_faces_convex(obj):
-	bpy.ops.object.select_all(action='DESELECT')
-	obj.select = True
-	bpy.ops.object.editmode_toggle()
-	bpy.ops.mesh.select_all(action='SELECT')
-	bpy.ops.mesh.vert_connect_concave()
-	bpy.ops.object.editmode_toggle()
-
 def auto_texture(obj):
 	bpy.ops.object.select_all(action='DESELECT')
 	obj.select = True
@@ -773,7 +765,6 @@ class BuildMap(bpy.types.Operator):
 			apply_boolean(map, brush, 'UNION')
 			
 		auto_texture(map)
-		make_object_faces_convex(map)
 		link_active_object_to_group("worldspawn")
 		move_object_to_layer(map, scene.bfg.map_layer)
 		map.hide_select = True
@@ -1234,7 +1225,23 @@ class ExportMap(bpy.types.Operator, ExportHelper):
 	filename_ext = ".map"
 	scale = bpy.props.FloatProperty(name="Scale", default=64, min=1, max=1024)
 	
-	def write_mesh(self, f, object, mesh):
+	def write_mesh(self, f, context, obj):
+		# need a temp mesh to store the result of to_mesh and a temp object for mesh operator
+		temp_mesh = obj.to_mesh(context.scene, True, 'PREVIEW')
+		temp_mesh.name = "_export_mesh"
+		temp_mesh.transform(obj.matrix_world)
+		temp_obj = bpy.data.objects.new("_export_obj", temp_mesh)
+		context.scene.objects.link(temp_obj)
+		temp_obj.select = True
+		context.scene.objects.active = temp_obj
+		bpy.ops.object.editmode_toggle()
+		bpy.ops.mesh.select_all(action='SELECT')
+		#bpy.ops.mesh.vert_connect_concave() # make faces convex
+		bpy.ops.mesh.quads_convert_to_tris() # triangulate
+		bpy.ops.object.editmode_toggle()
+		obj = temp_obj
+		mesh = temp_mesh
+	
 		# vertex position and normal are decoupled from uvs
 		# need to:
 		# -create new vertices for each vertex/uv combination
@@ -1253,6 +1260,7 @@ class ExportMap(bpy.types.Operator, ExportHelper):
 				num_vertices += 1
 		
 		# header
+		f.write("{\n")
 		f.write(" meshDef\n")
 		f.write(" {\n")
 		f.write("  ( %d %d 0 0 0 )\n" % (num_vertices, len(mesh.polygons)))
@@ -1268,7 +1276,7 @@ class ExportMap(bpy.types.Operator, ExportHelper):
 		# faces
 		f.write("  (\n")
 		for p in mesh.polygons:
-			f.write("   \"%s\" %d = " % (object.material_slots[p.material_index].name, p.loop_total))
+			f.write("   \"%s\" %d = " % (obj.material_slots[p.material_index].name, p.loop_total))
 			for i in reversed(p.loop_indices):
 				loop = mesh.loops[i]
 				v = mesh.vertices[loop.vertex_index]
@@ -1281,27 +1289,28 @@ class ExportMap(bpy.types.Operator, ExportHelper):
 		
 		# footer
 		f.write(" }\n")
+		f.write("}\n")
+		
+		# finished, delete the temp object and mesh
+		bpy.ops.object.delete()
+		bpy.data.meshes.remove(mesh)
 		
 	def execute(self, context):
-		if not "_map" in bpy.data.objects:
-			self.report({'ERROR'}, "Build the map first")
+		if not "worldspawn" in bpy.data.groups:
+			self.report({'ERROR'}, "No worldspawn group found. Either build the map or create a group named \"worldspawn\" and link an object to it.")
 		else:
-			map = bpy.data.objects["_map"]
+			# get out of edit mode and clear selection
+			if context.active_object:
+				bpy.ops.object.mode_set(mode='OBJECT')
+			bpy.ops.object.select_all(action='DESELECT')
+		
 			f = open(self.filepath, 'w')
 			f.write("Version 3\n")
-			
-			# entity 0
 			f.write("{\n")
 			f.write("\"classname\" \"worldspawn\"\n")
-			
-			# primitives
-			f.write("{\n")
-			self.write_mesh(f, map, map.data)
+			for obj in bpy.data.groups["worldspawn"].objects:
+				self.write_mesh(f, context, obj)
 			f.write("}\n")
-			
-			f.write("}\n")
-			
-			# entity 1
 			for obj in context.scene.objects:
 				if obj.bfg.type == 'ENTITY':
 					f.write("{\n")
