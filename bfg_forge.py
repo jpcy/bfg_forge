@@ -179,15 +179,15 @@ def material_decl_preview_items(self, context):
 		if os.path.dirname(decl.name) == context.scene.bfg.active_material_decl_path:
 			if context.scene.bfg.hide_bad_materials and (decl.diffuse_texture == "" or not fs.find_file_path(decl.diffuse_texture)):
 				continue # hide materials with missing diffuse texture
-			basename = os.path.basename(decl.name) # material name without the path
-			if basename in pcoll: # workaround blender bug, pcoll.load is supposed to return cached preview if name already exists
-				preview = pcoll[basename]
+			if decl.editor_texture in pcoll: # workaround blender bug, pcoll.load is supposed to return cached preview if name already exists
+				preview = pcoll[decl.editor_texture]
 			else:
 				preview = None
 				if decl.editor_texture != "":
 					filename = fs.find_file_path(decl.editor_texture)
 					if filename:
-						preview = pcoll.load(basename, filename, 'IMAGE')
+						preview = pcoll.load(decl.editor_texture, filename, 'IMAGE')
+			basename = os.path.basename(decl.name) # material name without the path
 			materials.append((basename, basename, decl.name, preview.icon_id if preview else 0, i))
 			i += 1
 	materials.sort()
