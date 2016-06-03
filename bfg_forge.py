@@ -296,7 +296,7 @@ class ImportMaterials(bpy.types.Operator):
 		scene.bfg.material_decl_paths.clear()
 		for decl in scene.bfg.material_decls:
 			name = os.path.dirname(decl.name)
-			if not name in scene.bfg.material_decl_paths:
+			if name.startswith("textures") and not name in scene.bfg.material_decl_paths:
 				path = scene.bfg.material_decl_paths.add()
 				path.name = name
 									
