@@ -374,19 +374,19 @@ def create_material(decl):
 		slot.use_map_color_spec = True
 		slot.use_map_specular = True
 	return mat
-		
-def get_active_material(context):
+	
+def get_or_create_active_material(context):
 	bfg = context.scene.bfg
-	if not bfg.active_material_decl in context.scene.bfg.material_decls:
-		return None
-	return create_material(context.scene.bfg.material_decls[bfg.active_material_decl])	
+	if bfg.active_material_decl in context.scene.bfg.material_decls:
+		return create_material(context.scene.bfg.material_decls[bfg.active_material_decl])
+	return None
 	
 class AssignMaterial(bpy.types.Operator):
 	bl_idname = "scene.assign_material"
 	bl_label = "Assign"
 	where = bpy.props.StringProperty(name="where", default='ALL')
 	
-	def assign(self, obj, mat):
+	def assign_to_object(self, obj, mat):
 		if obj.bfg.type == 'PLANE':
 			if self.where == 'CEILING' or self.where == 'ALL':
 				obj.bfg.ceiling_material = mat.name
@@ -405,14 +405,32 @@ class AssignMaterial(bpy.types.Operator):
 		obj = context.active_object
 		if not obj or not hasattr(obj.data, "materials"):
 			return {'FINISHED'}
-		if obj.mode == 'EDIT':
-			return {'FINISHED'} # TODO: handle assigning to faces
-		mat = get_active_material(context)
+		mat = get_or_create_active_material(context)
 		if not mat:
 			return {'FINISHED'}
-		self.assign(obj, mat)
-		for s in context.selected_objects:
-			self.assign(s, mat)
+		if obj.mode == 'EDIT':
+			# edit mode: assign to mesh faces
+			bm = bmesh.from_edit_mesh(obj.data)
+			selected_faces = [f for f in bm.faces if f.select]
+			if len(selected_faces) > 0:
+				# create/find a slot
+				material_index = -1
+				for i, m in enumerate(obj.data.materials):
+					if m == mat:
+						material_index = i
+						break
+				if material_index == -1:
+					# todo: remove any slots that are used exclusively by the selected faces, since they won't be needed anymore
+					obj.data.materials.append(mat)
+					material_index = len(obj.data.materials) - 1
+				for f in selected_faces:
+					f.material_index = material_index
+				bmesh.update_edit_mesh(obj.data)
+			#bm.free() # bmesh.from_edit_mesh returns garbage after this is called
+		else:
+			self.assign_to_object(obj, mat)
+			for s in context.selected_objects:
+				self.assign_to_object(s, mat)
 		return {'FINISHED'}
 		
 class EntityPropGroup(bpy.types.PropertyGroup):
@@ -622,7 +640,7 @@ class AddRoom(bpy.types.Operator):
 		obj.game.physics_type = 'NO_COLLISION'
 		obj.hide_render = True
 		if len(bpy.data.materials) > 0:
-			mat = get_active_material(context)
+			mat = get_or_create_active_material(context)
 			if mat:
 				obj.data.materials.append(mat)
 				obj.data.materials.append(mat)
@@ -671,7 +689,7 @@ class AddBrush(bpy.types.Operator):
 			obj.name = "brush"
 			obj.data.name = "brush"
 		obj.bfg.type = self.s_type
-		mat = get_active_material(context)
+		mat = get_or_create_active_material(context)
 		if mat:
 			obj.data.materials.append(mat)
 		scene.objects.active = obj
