@@ -29,6 +29,8 @@ import glob
 from mathutils import Vector
 import os
 
+preview_collections = {}
+
 class Lexer:
 	valid_token_chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_/\\-.&:"
 	valid_single_tokens = "{}[]()+-*/%!=<>,"
@@ -164,10 +166,11 @@ class MaterialDeclPropGroup(bpy.types.PropertyGroup):
 	heightmap_scale = bpy.props.FloatProperty() # 0 if normal_texture isn't a heightmap
 	normal_texture = bpy.props.StringProperty()
 	specular_texture = bpy.props.StringProperty()
+	texture = bpy.props.StringProperty() # any stage texture map. will be the light texture for light materials.
 	
 def material_decl_preview_items(self, context):
 	materials = []
-	pcoll = preview_collections["main"]
+	pcoll = preview_collections["material"]
 	if pcoll.current_decl_path == context.scene.bfg.active_material_decl_path and not pcoll.force_refresh:
 		return pcoll.materials
 	fs = FileSystem()
@@ -185,7 +188,7 @@ def material_decl_preview_items(self, context):
 					filename = fs.find_file_path(decl.editor_texture)
 					if filename:
 						preview = pcoll.load(basename, filename, 'IMAGE')
-			materials.append((basename, basename, "", preview.icon_id if preview else 0, i))
+			materials.append((basename, basename, decl.name, preview.icon_id if preview else 0, i))
 			i += 1
 	materials.sort()
 	pcoll.materials = materials
@@ -259,6 +262,8 @@ class ImportMaterials(bpy.types.Operator):
 						elif num_required_closing == 1:
 							# one closing brace left: closing stage
 							in_stage = False
+							if stage_texture:
+								decl.texture = stage_texture # any stage texture map. will be the light texture for light materials.
 							if stage_blend and stage_texture:
 								if stage_blend.lower() == "bumpmap":
 									decl.normal_texture = stage_texture
@@ -313,6 +318,7 @@ class ImportMaterials(bpy.types.Operator):
 			fs = FileSystem()
 			fs.for_each_file(r"materials\*.mtr", pmf)
 			self.update_material_decl_paths(context.scene)
+			preview_collections["light"].needs_refresh = True
 			self.report({'INFO'}, "Imported %d materials, updated %d" % (self.num_materials_created, self.num_materials_updated))
 		else:
 			self.report({'ERROR'}, "RBDOOM-3-BFG path not set")
@@ -498,7 +504,7 @@ def update_show_entity_names(self, context):
 			obj.show_name = context.scene.bfg.show_entity_names
 			
 def update_hide_bad_materials(self, context):
-	preview_collections["main"].force_refresh = True
+	preview_collections["material"].force_refresh = True
 	
 def update_shadeless_materials(self, context):
 	for mat in bpy.data.materials:
@@ -858,6 +864,33 @@ def get_light_radius(self):
 def set_light_radius(self, value):
 	self.data.distance = value
 	self.data.energy = value
+	
+def light_material_preview_items(self, context):
+	lights = []
+	pcoll = preview_collections["light"]
+	if not pcoll.needs_refresh:
+		return pcoll.lights
+	fs = FileSystem()
+	lights.append(("default", "default", "default", 0, 0))
+	i = 1
+	for decl in context.scene.bfg.material_decls:
+		# material name must start with "lights" and its texture file must exists
+		if os.path.dirname(decl.name).startswith("lights") and decl.texture:
+			if decl.texture == "":
+				continue
+			filename = fs.find_file_path(decl.texture)
+			if not filename:
+				continue
+			if decl.texture in pcoll: # workaround blender bug, pcoll.load is supposed to return cached preview if name already exists
+				preview = pcoll[decl.texture]
+			else:
+				preview = pcoll.load(decl.texture, filename, 'IMAGE')
+			lights.append((decl.name, os.path.basename(decl.name), decl.name, preview.icon_id, i))
+			i += 1
+	lights.sort()
+	pcoll.lights = lights
+	pcoll.needs_refresh = False
+	return pcoll.lights
 
 class AutoUnwrap(bpy.types.Operator):
 	bl_idname = "object.auto_uv_unwrap"
@@ -1133,6 +1166,9 @@ class ObjectPanel(bpy.types.Panel):
 				sub.prop(obj.data, "color", "")
 				col.prop(obj.data, "use_specular")
 				col.prop(obj.data, "use_diffuse")
+				col.template_icon_view(obj.bfg, "light_material")
+				col.separator()
+				col.prop(obj.bfg, "light_material", "")
 
 class UvPanel(bpy.types.Panel):
 	bl_label = "UV"
@@ -1279,6 +1315,8 @@ class ExportMap(bpy.types.Operator, ExportHelper):
 					f.write('"_color" "%s %s %s"\n' % (ftos(obj.data.color[0]), ftos(obj.data.color[1]), ftos(obj.data.color[2])))
 					f.write('"nospecular" "%d"\n' % 0 if obj.data.use_specular else 1)
 					f.write('"nodiffuse" "%d"\n' % 0 if obj.data.use_diffuse else 1)
+					if obj.bfg.light_material != "default":
+						f.write('"texture" "%s"\n' % obj.bfg.light_material)
 					f.write("}\n")
 			f.close()
 		return {'FINISHED'}
@@ -1311,6 +1349,7 @@ class BfgObjectPropertyGroup(bpy.types.PropertyGroup):
 	floor_material = bpy.props.StringProperty(name="Floor Material", update=update_room)
 	wall_material = bpy.props.StringProperty(name="Wall Material", update=update_room)
 	ceiling_material = bpy.props.StringProperty(name="Ceiling Material", update=update_room)
+	light_material = bpy.props.EnumProperty(name="", items=light_material_preview_items)
 	type = bpy.props.EnumProperty(items=[
 		('ENTITY', "Entity", ""),
 		('BRUSH', "Brush", ""),
@@ -1318,8 +1357,6 @@ class BfgObjectPropertyGroup(bpy.types.PropertyGroup):
 		('PLANE', "2D Room", ""),
 		('NONE', "None", "")
 	], name="BFG Forge Object Type", default='NONE')
-	
-preview_collections = {}
 	
 def register():
 	bpy.utils.register_module(__name__)
@@ -1332,7 +1369,11 @@ def register():
 	pcoll.materials = ()
 	pcoll.current_decl_path = ""
 	pcoll.force_refresh = False
-	preview_collections["main"] = pcoll
+	preview_collections["material"] = pcoll
+	pcoll = bpy.utils.previews.new()
+	pcoll.lights = ()
+	pcoll.needs_refresh = True
+	preview_collections["light"] = pcoll
 
 def unregister():
 	bpy.utils.unregister_module(__name__)
