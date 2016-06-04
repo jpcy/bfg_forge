@@ -35,6 +35,10 @@ _scale_to_blender = 1.0 / _scale_to_game
 
 preview_collections = {}
 
+################################################################################
+## LEXER 
+################################################################################
+
 class Lexer:
 	valid_token_chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_/\\-.&:"
 	valid_single_tokens = "{}[]()+-*/%!=<>,"
@@ -127,6 +131,10 @@ class Lexer:
 					self.pos += 1
 			else:
 				break
+				
+################################################################################
+## FILE SYSTEM
+################################################################################
 
 class FileSystem:
 	def __init__(self):
@@ -168,6 +176,10 @@ class FileSystem:
 					if not base in touched_files:
 						touched_files.append(base)
 						callback(full_path, f)
+						
+################################################################################
+## MATERIALS
+################################################################################
 					
 class MaterialDeclPathPropGroup(bpy.types.PropertyGroup):
 	pass # name property inherited
@@ -495,6 +507,10 @@ class RefreshMaterials(bpy.types.Operator):
 					create_material(decl)
 		return {'FINISHED'}
 		
+################################################################################
+## ENTITIES
+################################################################################
+		
 class EntityPropGroup(bpy.types.PropertyGroup):
 	# name property inherited
 	color = bpy.props.StringProperty()
@@ -570,30 +586,121 @@ class ImportEntities(bpy.types.Operator):
 		else:
 			self.report({'ERROR'}, "RBDOOM-3-BFG path not set")
 		return {'FINISHED'}
+		
+def create_object_color_material():
+	name = "_object_color"
+	# create the material if it doesn't exist
+	if name in bpy.data.materials:
+		mat = bpy.data.materials[name]
+	else:
+		mat = bpy.data.materials.new(name)
+	mat.use_fake_user = True
+	mat.use_object_color = True
+	mat.use_shadeless = True
 
-def update_wireframe_rooms(self, context):
-	for obj in context.scene.objects:
-		if obj.bfg.type in ['BRUSH', 'MESH', 'PLANE']:
-			obj.draw_type = 'WIRE' if context.scene.bfg.wireframe_rooms else 'TEXTURED'
-			
-def get_backface_culling(self):
-	return bpy.context.space_data.show_backface_culling
+class AddEntity(bpy.types.Operator):
+	bl_idname = "scene.add_entity"
+	bl_label = "Add Entity"
 	
-def set_backface_culling(self, value):
-	bpy.context.space_data.show_backface_culling = value
+	def execute(self, context):
+		ae = context.scene.bfg.active_entity
+		if ae != None and ae != "":
+			entity = context.scene.bfg.entities[ae]
+			create_object_color_material()
+			if context.active_object:
+				bpy.ops.object.mode_set(mode='OBJECT')
+			bpy.ops.object.select_all(action='DESELECT')
+			bpy.ops.mesh.primitive_cube_add()
+			obj = context.active_object
+			obj.bfg.type = 'ENTITY'
+			obj.bfg.classname = ae
+			obj.name = ae
+			obj.color = [float(i) for i in entity.color.split()] + [float(1)] # "r g b"
+			obj.data.name = ae
+			obj.data.materials.append(bpy.data.materials["_object_color"])
+			obj.lock_rotation = [True, True, False]
+			obj.lock_scale = [True, True, True]
+			context.scene.objects.active = obj
+			link_active_object_to_group("entities")
+			context.object.hide_render = True
+
+			# set entity dimensions
+			mins = Vector([float(i) * _scale_to_blender for i in entity.mins.split()])
+			maxs = Vector([float(i) * _scale_to_blender for i in entity.maxs.split()])
+			size = maxs + -mins
+			obj.dimensions = size
 			
-def update_show_entity_names(self, context):
-	for obj in context.scene.objects:
-		if obj.bfg.type == 'ENTITY':
-			obj.show_name = context.scene.bfg.show_entity_names
-			
-def update_hide_bad_materials(self, context):
-	preview_collections["material"].force_refresh = True
+			# set entity origin
+			origin = (mins + maxs) / 2.0
+			bpy.ops.object.editmode_toggle()
+			bpy.ops.mesh.select_all(action='SELECT')
+			bpy.ops.transform.translate(value=origin)
+			bpy.ops.object.editmode_toggle()
+		return {'FINISHED'}
+		
+################################################################################
+## LIGHTS
+################################################################################
+		
+class AddLight(bpy.types.Operator):
+	bl_idname = "scene.add_light"
+	bl_label = "Add Light"
 	
-def update_shadeless_materials(self, context):
-	for mat in bpy.data.materials:
-		if mat.name != "_object_color":
-			mat.use_shadeless = context.scene.bfg.shadeless_materials
+	def execute(self, context):
+		if context.active_object:
+			bpy.ops.object.mode_set(mode='OBJECT')
+		bpy.ops.object.select_all(action='DESELECT')
+		data = bpy.data.lamps.new(name="Light", type='POINT')
+		obj = bpy.data.objects.new(name="Light", object_data=data)
+		context.scene.objects.link(obj)
+		obj.select = True
+		context.scene.objects.active = obj
+		obj.data.distance = 300.0 * _scale_to_blender
+		obj.data.energy = obj.data.distance
+		#obj.scale = obj.distance
+		#obj.show_bounds = True
+		#obj.draw_bounds_type = 'SPHERE'
+		obj.data.use_sphere = True
+		link_active_object_to_group("lights")
+		return {'FINISHED'}
+		
+def get_light_radius(self):
+	return self.data.distance
+	
+def set_light_radius(self, value):
+	self.data.distance = value
+	self.data.energy = value
+	
+def light_material_preview_items(self, context):
+	lights = []
+	pcoll = preview_collections["light"]
+	if not pcoll.needs_refresh:
+		return pcoll.lights
+	fs = FileSystem()
+	lights.append(("default", "default", "default", 0, 0))
+	i = 1
+	for decl in context.scene.bfg.material_decls:
+		# material name must start with "lights" and its texture file must exists
+		if os.path.dirname(decl.name).startswith("lights") and decl.texture:
+			if decl.texture == "":
+				continue
+			filename = fs.find_image_file_path(decl.texture)
+			if not filename:
+				continue
+			if decl.texture in pcoll: # workaround blender bug, pcoll.load is supposed to return cached preview if name already exists
+				preview = pcoll[decl.texture]
+			else:
+				preview = pcoll.load(decl.texture, filename, 'IMAGE')
+			lights.append((decl.name, os.path.basename(decl.name), decl.name, preview.icon_id, i))
+			i += 1
+	lights.sort()
+	pcoll.lights = lights
+	pcoll.needs_refresh = False
+	return pcoll.lights
+	
+################################################################################
+## MAP
+################################################################################
 
 def update_room_plane_modifier(obj):
 	if obj.modifiers:
@@ -864,113 +971,10 @@ class BuildMap(bpy.types.Operator):
 			bpy.data.meshes.remove(mesh)
 
 		return {'FINISHED'}
-
-def create_object_color_material():
-	name = "_object_color"
-	# create the material if it doesn't exist
-	if name in bpy.data.materials:
-		mat = bpy.data.materials[name]
-	else:
-		mat = bpy.data.materials.new(name)
-	mat.use_fake_user = True
-	mat.use_object_color = True
-	mat.use_shadeless = True
-
-class AddEntity(bpy.types.Operator):
-	bl_idname = "scene.add_entity"
-	bl_label = "Add Entity"
-	
-	def execute(self, context):
-		ae = context.scene.bfg.active_entity
-		if ae != None and ae != "":
-			entity = context.scene.bfg.entities[ae]
-			create_object_color_material()
-			if context.active_object:
-				bpy.ops.object.mode_set(mode='OBJECT')
-			bpy.ops.object.select_all(action='DESELECT')
-			bpy.ops.mesh.primitive_cube_add()
-			obj = context.active_object
-			obj.bfg.type = 'ENTITY'
-			obj.bfg.classname = ae
-			obj.name = ae
-			obj.color = [float(i) for i in entity.color.split()] + [float(1)] # "r g b"
-			obj.data.name = ae
-			obj.data.materials.append(bpy.data.materials["_object_color"])
-			obj.lock_rotation = [True, True, False]
-			obj.lock_scale = [True, True, True]
-			context.scene.objects.active = obj
-			link_active_object_to_group("entities")
-			context.object.hide_render = True
-
-			# set entity dimensions
-			mins = Vector([float(i) * _scale_to_blender for i in entity.mins.split()])
-			maxs = Vector([float(i) * _scale_to_blender for i in entity.maxs.split()])
-			size = maxs + -mins
-			obj.dimensions = size
-			
-			# set entity origin
-			origin = (mins + maxs) / 2.0
-			bpy.ops.object.editmode_toggle()
-			bpy.ops.mesh.select_all(action='SELECT')
-			bpy.ops.transform.translate(value=origin)
-			bpy.ops.object.editmode_toggle()
-		return {'FINISHED'}
 		
-class AddLight(bpy.types.Operator):
-	bl_idname = "scene.add_light"
-	bl_label = "Add Light"
-	
-	def execute(self, context):
-		if context.active_object:
-			bpy.ops.object.mode_set(mode='OBJECT')
-		bpy.ops.object.select_all(action='DESELECT')
-		data = bpy.data.lamps.new(name="Light", type='POINT')
-		obj = bpy.data.objects.new(name="Light", object_data=data)
-		context.scene.objects.link(obj)
-		obj.select = True
-		context.scene.objects.active = obj
-		obj.data.distance = 300.0 * _scale_to_blender
-		obj.data.energy = obj.data.distance
-		#obj.scale = obj.distance
-		#obj.show_bounds = True
-		#obj.draw_bounds_type = 'SPHERE'
-		obj.data.use_sphere = True
-		link_active_object_to_group("lights")
-		return {'FINISHED'}
-		
-def get_light_radius(self):
-	return self.data.distance
-	
-def set_light_radius(self, value):
-	self.data.distance = value
-	self.data.energy = value
-	
-def light_material_preview_items(self, context):
-	lights = []
-	pcoll = preview_collections["light"]
-	if not pcoll.needs_refresh:
-		return pcoll.lights
-	fs = FileSystem()
-	lights.append(("default", "default", "default", 0, 0))
-	i = 1
-	for decl in context.scene.bfg.material_decls:
-		# material name must start with "lights" and its texture file must exists
-		if os.path.dirname(decl.name).startswith("lights") and decl.texture:
-			if decl.texture == "":
-				continue
-			filename = fs.find_image_file_path(decl.texture)
-			if not filename:
-				continue
-			if decl.texture in pcoll: # workaround blender bug, pcoll.load is supposed to return cached preview if name already exists
-				preview = pcoll[decl.texture]
-			else:
-				preview = pcoll.load(decl.texture, filename, 'IMAGE')
-			lights.append((decl.name, os.path.basename(decl.name), decl.name, preview.icon_id, i))
-			i += 1
-	lights.sort()
-	pcoll.lights = lights
-	pcoll.needs_refresh = False
-	return pcoll.lights
+################################################################################
+## UV UNWRAPPING
+################################################################################
 
 class AutoUnwrap(bpy.types.Operator):
 	bl_idname = "object.auto_uv_unwrap"
@@ -1125,6 +1129,136 @@ class NudgeUV(bpy.types.Operator):
 		# update the mesh
 		bmesh.update_edit_mesh(me)
 		return {'FINISHED'}
+		
+################################################################################
+## EXPORT
+################################################################################
+				
+def ftos(a):
+	return ("%f" % a).rstrip('0').rstrip('.')
+		
+class ExportMap(bpy.types.Operator, ExportHelper):
+	bl_idname = "export_scene.map"
+	bl_label = "Export RBDOOM-3-BFG map"
+	bl_options = {'PRESET'}
+	filename_ext = ".map"
+	
+	def write_mesh(self, f, context, obj):
+		# need a temp mesh to store the result of to_mesh and a temp object for mesh operator
+		temp_mesh = obj.to_mesh(context.scene, True, 'PREVIEW')
+		temp_mesh.name = "_export_mesh"
+		temp_mesh.transform(obj.matrix_world)
+		temp_obj = bpy.data.objects.new("_export_obj", temp_mesh)
+		context.scene.objects.link(temp_obj)
+		temp_obj.select = True
+		context.scene.objects.active = temp_obj
+		bpy.ops.object.editmode_toggle()
+		bpy.ops.mesh.select_all(action='SELECT')
+		#bpy.ops.mesh.vert_connect_concave() # make faces convex
+		bpy.ops.mesh.quads_convert_to_tris() # triangulate
+		bpy.ops.object.editmode_toggle()
+		obj = temp_obj
+		mesh = temp_mesh
+	
+		# vertex position and normal are decoupled from uvs
+		# need to:
+		# -create new vertices for each vertex/uv combination
+		# -map the old vertex indices to the new ones
+		vert_map = list(range(len(mesh.vertices)))
+		for i in range(0, len(vert_map)):
+			vert_map[i] = list()
+		for p in mesh.polygons:
+			for i in p.loop_indices:
+				loop = mesh.loops[i]
+				vert_map[loop.vertex_index].append([0, loop.index])
+		num_vertices = 0
+		for i, v in enumerate(mesh.vertices):
+			for vm in vert_map[i]:
+				vm[0] = num_vertices
+				num_vertices += 1
+		
+		# header
+		f.write("{\n")
+		f.write(" meshDef\n")
+		f.write(" {\n")
+		f.write("  ( %d %d 0 0 0 )\n" % (num_vertices, len(mesh.polygons)))
+
+		# vertices				
+		f.write("  (\n")
+		for i, v in enumerate(mesh.vertices):
+			for vm in vert_map[i]:
+				uv = mesh.uv_layers[0].data[vm[1]].uv
+				f.write("   ( %s %s %s %s %s %s %s %s )\n" % (ftos(v.co.x * _scale_to_game), ftos(v.co.y * _scale_to_game), ftos(v.co.z * _scale_to_game), ftos(uv.x), ftos(uv.y), ftos(v.normal.x), ftos(v.normal.y), ftos(v.normal.z)))
+		f.write("  )\n")
+		
+		# faces
+		f.write("  (\n")
+		for p in mesh.polygons:
+			f.write("   \"%s\" %d = " % (obj.material_slots[p.material_index].name, p.loop_total))
+			for i in reversed(p.loop_indices):
+				loop = mesh.loops[i]
+				v = mesh.vertices[loop.vertex_index]
+				uv = mesh.uv_layers[0].data[loop.index].uv
+				# find the vert_map nested list element with the matching loop.index
+				vm = next(x for x in vert_map[loop.vertex_index] if x[1] == loop.index)
+				f.write("%d " % vm[0])
+			f.write("\n")
+		f.write("  )\n")
+		
+		# footer
+		f.write(" }\n")
+		f.write("}\n")
+		
+		# finished, delete the temp object and mesh
+		bpy.ops.object.delete()
+		bpy.data.meshes.remove(mesh)
+		
+	def execute(self, context):
+		if not "worldspawn" in bpy.data.groups:
+			self.report({'ERROR'}, "No worldspawn group found. Either build the map or create a group named \"worldspawn\" and link an object to it.")
+		else:
+			# get out of edit mode and clear selection
+			if context.active_object:
+				bpy.ops.object.mode_set(mode='OBJECT')
+			bpy.ops.object.select_all(action='DESELECT')
+		
+			f = open(self.filepath, 'w')
+			f.write("Version 3\n")
+			f.write("{\n")
+			f.write("\"classname\" \"worldspawn\"\n")
+			for obj in bpy.data.groups["worldspawn"].objects:
+				self.write_mesh(f, context, obj)
+			f.write("}\n")
+			for obj in context.scene.objects:
+				if obj.bfg.type == 'ENTITY':
+					f.write("{\n")
+					f.write("\"classname\" \"%s\"\n" % obj.bfg.classname)
+					f.write("\"name\" \"%s\"\n" % obj.name)
+					f.write("\"origin\" \"%s %s %s\"\n" % (ftos(obj.location[0] * _scale_to_game), ftos(obj.location[1] * _scale_to_game), ftos(obj.location[2] * _scale_to_game)))
+					f.write("}\n")
+				if obj.type == 'LAMP':
+					f.write("{\n")
+					f.write('"classname" "light"\n')
+					f.write('"name" "%s"\n' % obj.name)
+					f.write('"origin" "%s %s %s"\n' % (ftos(obj.location[0] * _scale_to_game), ftos(obj.location[1] * _scale_to_game), ftos(obj.location[2] * _scale_to_game)))
+					f.write('"light_center" "0 0 0"\n')
+					radius = ftos(obj.data.distance * _scale_to_game)
+					f.write('"light_radius" "%s %s %s"\n' % (radius, radius, radius))
+					f.write('"_color" "%s %s %s"\n' % (ftos(obj.data.color[0]), ftos(obj.data.color[1]), ftos(obj.data.color[2])))
+					f.write('"nospecular" "%d"\n' % 0 if obj.data.use_specular else 1)
+					f.write('"nodiffuse" "%d"\n' % 0 if obj.data.use_diffuse else 1)
+					if obj.bfg.light_material != "default":
+						f.write('"texture" "%s"\n' % obj.bfg.light_material)
+					f.write("}\n")
+			f.close()
+		return {'FINISHED'}
+	
+def menu_func_export(self, context):
+	self.layout.operator(ExportMap.bl_idname, "RBDOOM-3-BFG map (.map)")
+		
+################################################################################
+## GUI PANELS
+################################################################################
 		
 class SettingsPanel(bpy.types.Panel):
 	bl_label = "Settings"
@@ -1288,127 +1422,33 @@ class UvPanel(bpy.types.Panel):
 				row.operator(NudgeUV.bl_idname, "Horizontal").dir = 'HORIZONTAL'
 				row.operator(NudgeUV.bl_idname, "Vertical").dir = 'VERTICAL'
 				
-def ftos(a):
-	return ("%f" % a).rstrip('0').rstrip('.')
-		
-class ExportMap(bpy.types.Operator, ExportHelper):
-	bl_idname = "export_scene.map"
-	bl_label = "Export RBDOOM-3-BFG map"
-	bl_options = {'PRESET'}
-	filename_ext = ".map"
-	
-	def write_mesh(self, f, context, obj):
-		# need a temp mesh to store the result of to_mesh and a temp object for mesh operator
-		temp_mesh = obj.to_mesh(context.scene, True, 'PREVIEW')
-		temp_mesh.name = "_export_mesh"
-		temp_mesh.transform(obj.matrix_world)
-		temp_obj = bpy.data.objects.new("_export_obj", temp_mesh)
-		context.scene.objects.link(temp_obj)
-		temp_obj.select = True
-		context.scene.objects.active = temp_obj
-		bpy.ops.object.editmode_toggle()
-		bpy.ops.mesh.select_all(action='SELECT')
-		#bpy.ops.mesh.vert_connect_concave() # make faces convex
-		bpy.ops.mesh.quads_convert_to_tris() # triangulate
-		bpy.ops.object.editmode_toggle()
-		obj = temp_obj
-		mesh = temp_mesh
-	
-		# vertex position and normal are decoupled from uvs
-		# need to:
-		# -create new vertices for each vertex/uv combination
-		# -map the old vertex indices to the new ones
-		vert_map = list(range(len(mesh.vertices)))
-		for i in range(0, len(vert_map)):
-			vert_map[i] = list()
-		for p in mesh.polygons:
-			for i in p.loop_indices:
-				loop = mesh.loops[i]
-				vert_map[loop.vertex_index].append([0, loop.index])
-		num_vertices = 0
-		for i, v in enumerate(mesh.vertices):
-			for vm in vert_map[i]:
-				vm[0] = num_vertices
-				num_vertices += 1
-		
-		# header
-		f.write("{\n")
-		f.write(" meshDef\n")
-		f.write(" {\n")
-		f.write("  ( %d %d 0 0 0 )\n" % (num_vertices, len(mesh.polygons)))
+################################################################################
+## PROPERTIES
+################################################################################
 
-		# vertices				
-		f.write("  (\n")
-		for i, v in enumerate(mesh.vertices):
-			for vm in vert_map[i]:
-				uv = mesh.uv_layers[0].data[vm[1]].uv
-				f.write("   ( %s %s %s %s %s %s %s %s )\n" % (ftos(v.co.x * _scale_to_game), ftos(v.co.y * _scale_to_game), ftos(v.co.z * _scale_to_game), ftos(uv.x), ftos(uv.y), ftos(v.normal.x), ftos(v.normal.y), ftos(v.normal.z)))
-		f.write("  )\n")
-		
-		# faces
-		f.write("  (\n")
-		for p in mesh.polygons:
-			f.write("   \"%s\" %d = " % (obj.material_slots[p.material_index].name, p.loop_total))
-			for i in reversed(p.loop_indices):
-				loop = mesh.loops[i]
-				v = mesh.vertices[loop.vertex_index]
-				uv = mesh.uv_layers[0].data[loop.index].uv
-				# find the vert_map nested list element with the matching loop.index
-				vm = next(x for x in vert_map[loop.vertex_index] if x[1] == loop.index)
-				f.write("%d " % vm[0])
-			f.write("\n")
-		f.write("  )\n")
-		
-		# footer
-		f.write(" }\n")
-		f.write("}\n")
-		
-		# finished, delete the temp object and mesh
-		bpy.ops.object.delete()
-		bpy.data.meshes.remove(mesh)
-		
-	def execute(self, context):
-		if not "worldspawn" in bpy.data.groups:
-			self.report({'ERROR'}, "No worldspawn group found. Either build the map or create a group named \"worldspawn\" and link an object to it.")
-		else:
-			# get out of edit mode and clear selection
-			if context.active_object:
-				bpy.ops.object.mode_set(mode='OBJECT')
-			bpy.ops.object.select_all(action='DESELECT')
-		
-			f = open(self.filepath, 'w')
-			f.write("Version 3\n")
-			f.write("{\n")
-			f.write("\"classname\" \"worldspawn\"\n")
-			for obj in bpy.data.groups["worldspawn"].objects:
-				self.write_mesh(f, context, obj)
-			f.write("}\n")
-			for obj in context.scene.objects:
-				if obj.bfg.type == 'ENTITY':
-					f.write("{\n")
-					f.write("\"classname\" \"%s\"\n" % obj.bfg.classname)
-					f.write("\"name\" \"%s\"\n" % obj.name)
-					f.write("\"origin\" \"%s %s %s\"\n" % (ftos(obj.location[0] * _scale_to_game), ftos(obj.location[1] * _scale_to_game), ftos(obj.location[2] * _scale_to_game)))
-					f.write("}\n")
-				if obj.type == 'LAMP':
-					f.write("{\n")
-					f.write('"classname" "light"\n')
-					f.write('"name" "%s"\n' % obj.name)
-					f.write('"origin" "%s %s %s"\n' % (ftos(obj.location[0] * _scale_to_game), ftos(obj.location[1] * _scale_to_game), ftos(obj.location[2] * _scale_to_game)))
-					f.write('"light_center" "0 0 0"\n')
-					radius = ftos(obj.data.distance * _scale_to_game)
-					f.write('"light_radius" "%s %s %s"\n' % (radius, radius, radius))
-					f.write('"_color" "%s %s %s"\n' % (ftos(obj.data.color[0]), ftos(obj.data.color[1]), ftos(obj.data.color[2])))
-					f.write('"nospecular" "%d"\n' % 0 if obj.data.use_specular else 1)
-					f.write('"nodiffuse" "%d"\n' % 0 if obj.data.use_diffuse else 1)
-					if obj.bfg.light_material != "default":
-						f.write('"texture" "%s"\n' % obj.bfg.light_material)
-					f.write("}\n")
-			f.close()
-		return {'FINISHED'}
+def update_wireframe_rooms(self, context):
+	for obj in context.scene.objects:
+		if obj.bfg.type in ['BRUSH', 'MESH', 'PLANE']:
+			obj.draw_type = 'WIRE' if context.scene.bfg.wireframe_rooms else 'TEXTURED'
+			
+def get_backface_culling(self):
+	return bpy.context.space_data.show_backface_culling
 	
-def menu_func_export(self, context):
-	self.layout.operator(ExportMap.bl_idname, "RBDOOM-3-BFG map (.map)")
+def set_backface_culling(self, value):
+	bpy.context.space_data.show_backface_culling = value
+			
+def update_show_entity_names(self, context):
+	for obj in context.scene.objects:
+		if obj.bfg.type == 'ENTITY':
+			obj.show_name = context.scene.bfg.show_entity_names
+			
+def update_hide_bad_materials(self, context):
+	preview_collections["material"].force_refresh = True
+	
+def update_shadeless_materials(self, context):
+	for mat in bpy.data.materials:
+		if mat.name != "_object_color":
+			mat.use_shadeless = context.scene.bfg.shadeless_materials
 	
 class BfgScenePropertyGroup(bpy.types.PropertyGroup):
 	game_path = bpy.props.StringProperty(name="RBDOOM-3-BFG Path", description="RBDOOM-3-BFG Path", subtype='DIR_PATH')
@@ -1444,6 +1484,10 @@ class BfgObjectPropertyGroup(bpy.types.PropertyGroup):
 		('PLANE', "2D Room", ""),
 		('NONE', "None", "")
 	], name="BFG Forge Object Type", default='NONE')
+	
+################################################################################
+## MAIN
+################################################################################
 	
 def register():
 	bpy.utils.register_module(__name__)
