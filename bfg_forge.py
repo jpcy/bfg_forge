@@ -145,6 +145,18 @@ class FileSystem:
 		self.search_dirs.append("basedev")
 		self.search_dirs.append("base")
 		
+	def calculate_relative_path(self, filename):
+		# e.g. if game_path is "D:\Games\DOOM 3",
+		# "D:\Games\DOOM 3\basedev\models\mapobjects\arcade_machine\arcade_machine.lwo"
+		# should return
+		# "models\mapobjects\arcade_machine\arcade_machine.lwo"
+		for search_dir in self.search_dirs:
+			full_search_path = os.path.join(os.path.realpath(bpy.path.abspath(bpy.context.scene.bfg.game_path)), search_dir).lower()
+			full_file_path = os.path.realpath(bpy.path.abspath(filename)).lower()
+			if full_file_path.startswith(full_search_path):
+				return os.path.relpath(full_file_path, full_search_path)
+		return None
+		
 	def find_file_path(self, filename):
 		for search_dir in self.search_dirs:
 			full_path = os.path.join(os.path.realpath(bpy.path.abspath(bpy.context.scene.bfg.game_path)), search_dir, filename)
@@ -493,6 +505,13 @@ class AssignMaterial(bpy.types.Operator):
 					self.assign_to_object(s, mat)
 		return {'FINISHED'}
 		
+def refresh_object_materials(context, obj):
+	if hasattr(obj.data, "materials"):
+		for mat in obj.data.materials:
+			if mat.name in context.scene.bfg.material_decls:
+				decl = context.scene.bfg.material_decls[mat.name]
+				create_material(decl)
+		
 class RefreshMaterials(bpy.types.Operator):
 	"""Refresh the active object's materials, recreating them from their corresponding material decls"""
 	bl_idname = "scene.refresh_materials"
@@ -500,11 +519,8 @@ class RefreshMaterials(bpy.types.Operator):
 	
 	def execute(self, context):
 		obj = context.active_object
-		if obj and hasattr(obj.data, "materials"):
-			for mat in obj.data.materials:
-				if mat.name in context.scene.bfg.material_decls:
-					decl = context.scene.bfg.material_decls[mat.name]
-					create_material(decl)
+		if obj:
+			refresh_object_materials(context, obj)
 		return {'FINISHED'}
 		
 ################################################################################
@@ -697,6 +713,68 @@ def light_material_preview_items(self, context):
 	pcoll.lights = lights
 	pcoll.needs_refresh = False
 	return pcoll.lights
+	
+################################################################################
+## STATIC MODELS
+################################################################################
+		
+class AddStaticModel(bpy.types.Operator):
+	"""Browse for a static model to add"""
+	bl_idname = "scene.add_static_model"
+	bl_label = "Add Static Model"
+	filepath = bpy.props.StringProperty(default="", options={'HIDDEN', 'SKIP_SAVE'})
+	
+	def execute(self, context):
+		# the func_static entity model value looks like this:
+		# "models/mapobjects/arcade_machine/arcade_machine.lwo"
+		# so the file path must descend from one of the search paths
+		fs = FileSystem()
+		relative_path = fs.calculate_relative_path(self.properties.filepath)
+		if not relative_path:
+			self.report({'ERROR'}, "File path must descend from \"%s\"" % context.scene.bfg.game_path)
+			return {'FINISHED'}
+				
+		# check that the required import addon is enabled
+		extension = os.path.splitext(self.properties.filepath)[1]
+		if extension.lower() == ".lwo":
+			if not bpy.ops.import_scene.lwo:
+				self.report({'ERROR'}, "LightWave Object (.lwo) import addon not enabled")
+				return {'FINISHED'}
+		else:
+			self.report({'ERROR'}, "Unsupported extension \"%s\"" % extension)
+			return {'FINISHED'}
+		
+		if context.active_object:
+			bpy.ops.object.mode_set(mode='OBJECT')
+		bpy.ops.object.select_all(action='DESELECT')
+		
+		# lwo importer doesn't select or make active the object in creates...
+		# need to diff scene objects before and after import to find it
+		obj_names = []
+		for obj in context.scene.objects:
+			obj_names.append(obj.name)
+		bpy.ops.import_scene.lwo(filepath=self.properties.filepath, USE_EXISTING_MATERIALS=True)
+		imported_obj = None
+		for obj in context.scene.objects:
+			if not obj.name in obj_names:
+				imported_obj = obj
+				break
+		if not imported_obj:
+			return {'FINISHED'} # import must have failed
+		obj = imported_obj
+		context.scene.objects.active = obj
+		obj.select = True
+		obj.bfg.type = 'STATIC_MODEL'
+		obj.bfg.classname = "func_static"
+		obj.bfg.entity_model = relative_path
+		obj.scale = [_scale_to_blender, _scale_to_blender, _scale_to_blender]
+		link_active_object_to_group("static models")
+		refresh_object_materials(context, obj)
+		return {'FINISHED'}
+
+	def invoke(self, context, event):
+		context.window_manager.fileselect_add(self)
+		return {'RUNNING_MODAL'}
 	
 ################################################################################
 ## MAP
@@ -1230,13 +1308,15 @@ class ExportMap(bpy.types.Operator, ExportHelper):
 				self.write_mesh(f, context, obj)
 			f.write("}\n")
 			for obj in context.scene.objects:
-				if obj.bfg.type == 'ENTITY':
+				if obj.bfg.type == 'ENTITY' or obj.bfg.type == 'STATIC_MODEL':
 					f.write("{\n")
 					f.write("\"classname\" \"%s\"\n" % obj.bfg.classname)
 					f.write("\"name\" \"%s\"\n" % obj.name)
 					f.write("\"origin\" \"%s %s %s\"\n" % (ftos(obj.location[0] * _scale_to_game), ftos(obj.location[1] * _scale_to_game), ftos(obj.location[2] * _scale_to_game)))
+					if obj.bfg.type == 'STATIC_MODEL':
+						f.write("\"model\" \"%s\"\n" % obj.bfg.entity_model)
 					f.write("}\n")
-				if obj.type == 'LAMP':
+				elif obj.type == 'LAMP':
 					f.write("{\n")
 					f.write('"classname" "light"\n')
 					f.write('"name" "%s"\n' % obj.name)
@@ -1301,6 +1381,7 @@ class CreatePanel(bpy.types.Panel):
 			row.operator(AddEntity.bl_idname, AddEntity.bl_label, icon='POSE_HLT')
 			row.prop_search(scene.bfg, "active_entity", scene.bfg, "entities", "", icon='SCRIPT')
 		col.operator(AddLight.bl_idname, AddLight.bl_label, icon='LAMP_POINT')
+		col.operator(AddStaticModel.bl_idname, AddStaticModel.bl_label, icon='MESH_MONKEY')
 		
 class MaterialPanel(bpy.types.Panel):
 	bl_label = "Material"
@@ -1472,12 +1553,14 @@ class BfgScenePropertyGroup(bpy.types.PropertyGroup):
 	
 class BfgObjectPropertyGroup(bpy.types.PropertyGroup):
 	classname = bpy.props.StringProperty(name="Classname", default="")
+	entity_model = bpy.props.StringProperty(name="Entity model", default="")
 	room_height = bpy.props.FloatProperty(name="Room Height", default=4, step=20, precision=1, update=update_room)
 	floor_material = bpy.props.StringProperty(name="Floor Material", update=update_room)
 	wall_material = bpy.props.StringProperty(name="Wall Material", update=update_room)
 	ceiling_material = bpy.props.StringProperty(name="Ceiling Material", update=update_room)
 	light_material = bpy.props.EnumProperty(name="", items=light_material_preview_items)
 	type = bpy.props.EnumProperty(items=[
+		('STATIC_MODEL', "Static Model", ""),
 		('ENTITY', "Entity", ""),
 		('BRUSH', "Brush", ""),
 		('MESH', "3D Room", ""),
