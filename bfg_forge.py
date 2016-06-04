@@ -144,6 +144,15 @@ class FileSystem:
 				return full_path
 		return None
 		
+	def find_image_file_path(self, filename):
+		path = self.find_file_path(filename)
+		if not path:
+			split = os.path.splitext(filename)
+			if split[1] == "":
+				# no extension, try tga
+				path = self.find_file_path(split[0] + ".tga")
+		return path
+		
 	def for_each_file(self, pattern, callback):
 		# don't touch the same file more than once
 		# e.g.
@@ -181,14 +190,14 @@ def material_decl_preview_items(self, context):
 	i = 0
 	for decl in context.scene.bfg.material_decls:
 		if os.path.dirname(decl.name) == context.scene.bfg.active_material_decl_path:
-			if context.scene.bfg.hide_bad_materials and (decl.diffuse_texture == "" or not fs.find_file_path(decl.diffuse_texture)):
+			if context.scene.bfg.hide_bad_materials and (decl.diffuse_texture == "" or not fs.find_image_file_path(decl.diffuse_texture)):
 				continue # hide materials with missing diffuse texture
 			if decl.editor_texture in pcoll: # workaround blender bug, pcoll.load is supposed to return cached preview if name already exists
 				preview = pcoll[decl.editor_texture]
 			else:
 				preview = None
 				if decl.editor_texture != "":
-					filename = fs.find_file_path(decl.editor_texture)
+					filename = fs.find_image_file_path(decl.editor_texture)
 					if filename:
 						preview = pcoll.load(decl.editor_texture, filename, 'IMAGE')
 			materials.append((decl.name, os.path.basename(decl.name), decl.name, preview.icon_id if preview else 0, i))
@@ -335,7 +344,8 @@ def create_material_texture(fs, mat, texture, slot_number):
 		tex = bpy.data.textures.new(texture, type='IMAGE')
 		
 	# texture image may have changed
-	img_filename = fs.find_file_path(texture)
+	img_filename = fs.find_image_file_path(texture)
+	print(mat.name, img_filename)
 	if img_filename:
 		img_filename = bpy.path.relpath(img_filename) # use relative path for image filenames
 	if not tex.image or tex.image.filepath != img_filename:
@@ -468,6 +478,20 @@ class AssignMaterial(bpy.types.Operator):
 			for s in context.selected_objects:
 				if hasattr(s.data, "materials"):
 					self.assign_to_object(s, mat)
+		return {'FINISHED'}
+		
+class RefreshMaterials(bpy.types.Operator):
+	'''Refresh the active object's materials, recreating them from their corresponding material decls.'''
+	bl_idname = "scene.refresh_materials"
+	bl_label = "Refresh Materials"
+	
+	def execute(self, context):
+		obj = context.active_object
+		if obj and hasattr(obj.data, "materials"):
+			for mat in obj.data.materials:
+				if mat.name in context.scene.bfg.material_decls:
+					decl = context.scene.bfg.material_decls[mat.name]
+					create_material(decl)
 		return {'FINISHED'}
 		
 class EntityPropGroup(bpy.types.PropertyGroup):
@@ -933,7 +957,7 @@ def light_material_preview_items(self, context):
 		if os.path.dirname(decl.name).startswith("lights") and decl.texture:
 			if decl.texture == "":
 				continue
-			filename = fs.find_file_path(decl.texture)
+			filename = fs.find_image_file_path(decl.texture)
 			if not filename:
 				continue
 			if decl.texture in pcoll: # workaround blender bug, pcoll.load is supposed to return cached preview if name already exists
@@ -1225,6 +1249,9 @@ class ObjectPanel(bpy.types.Panel):
 				col.template_icon_view(obj.bfg, "light_material")
 				col.separator()
 				col.prop(obj.bfg, "light_material", "")
+			elif obj.type == 'MESH':
+				col.separator()
+				col.operator(RefreshMaterials.bl_idname, RefreshMaterials.bl_label, icon='MATERIAL')
 
 class UvPanel(bpy.types.Panel):
 	bl_label = "UV"
