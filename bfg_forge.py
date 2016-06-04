@@ -396,6 +396,7 @@ def get_or_create_active_material(context):
 	return None
 	
 class AssignMaterial(bpy.types.Operator):
+	"""Assign the material to the selected objects or object faces"""
 	bl_idname = "scene.assign_material"
 	bl_label = "Assign"
 	where = bpy.props.StringProperty(name="where", default='ALL')
@@ -481,7 +482,7 @@ class AssignMaterial(bpy.types.Operator):
 		return {'FINISHED'}
 		
 class RefreshMaterials(bpy.types.Operator):
-	'''Refresh the active object's materials, recreating them from their corresponding material decls.'''
+	"""Refresh the active object's materials, recreating them from their corresponding material decls"""
 	bl_idname = "scene.refresh_materials"
 	bl_label = "Refresh Materials"
 	
@@ -1133,14 +1134,12 @@ class SettingsPanel(bpy.types.Panel):
 
 	def draw(self, context):
 		scene = context.scene
-		box = self.layout.box()
-		col = box.column()
-		col.label("RBDOOM-3-BFG Path", icon='LOGIC')
+		col = self.layout.column(align=True)
 		col.prop(scene.bfg, "game_path", "Path")
 		col.prop(scene.bfg, "mod_dir")
-		col = self.layout.column()
 		col.operator(ImportMaterials.bl_idname, ImportMaterials.bl_label, icon='MATERIAL')
 		col.operator(ImportEntities.bl_idname, ImportEntities.bl_label, icon='POSE_HLT')
+		col = self.layout.column_flow(2)
 		col.prop(scene.bfg, "wireframe_rooms")
 		col.prop(scene.bfg, "backface_culling")
 		col.prop(scene.bfg, "show_entity_names")
@@ -1155,29 +1154,19 @@ class CreatePanel(bpy.types.Panel):
 	
 	def draw(self, context):
 		scene = context.scene
+		col = self.layout.column(align=True)
+		row = col.row(align=True)
+		row.operator(BuildMap.bl_idname, "Build Map", icon='MOD_BUILD').bool_op = 'UNION'
+		row.prop(context.scene.bfg, "map_layer")
+		col.operator(AddRoom.bl_idname, "Add 2D Room", icon='SURFACE_NCURVE')
+		col.operator(AddBrush.bl_idname, "Add 3D Room", icon='SNAP_FACE').s_type = 'MESH'
+		col.operator(AddBrush.bl_idname, "Add Brush", icon='SNAP_VOLUME').s_type = 'BRUSH'
 		col = self.layout.column()
-		box = col.box()
-		sub = box.column(align=True)
-		sub.label("Map", icon='MOD_BUILD')
-		sub.operator(AddRoom.bl_idname, "Add 2D Room", icon='SURFACE_NCURVE')
-		sub.operator(AddBrush.bl_idname, "Add 3D Room", icon='SNAP_FACE').s_type = 'MESH'
-		sub.operator(AddBrush.bl_idname, "Add Brush", icon='SNAP_VOLUME').s_type = 'BRUSH'
 		if len(scene.bfg.entities) > 0:
 			row = col.row(align=True)
-			row.prop_search(scene.bfg, "active_entity", scene.bfg, "entities", "", icon='SCRIPT')
 			row.operator(AddEntity.bl_idname, AddEntity.bl_label, icon='POSE_HLT')
+			row.prop_search(scene.bfg, "active_entity", scene.bfg, "entities", "", icon='SCRIPT')
 		col.operator(AddLight.bl_idname, AddLight.bl_label, icon='LAMP_POINT')
-		
-class MapPanel(bpy.types.Panel):
-	bl_label = "Map"
-	bl_space_type = 'VIEW_3D'
-	bl_region_type = 'TOOLS'
-	bl_category = "BFGForge"
-
-	def draw(self, context):
-		col = self.layout.column(align=True)
-		col.operator(BuildMap.bl_idname, "Build Map", icon='MOD_BUILD').bool_op = 'UNION'
-		col.prop(context.scene.bfg, "map_layer")
 		
 class MaterialPanel(bpy.types.Panel):
 	bl_label = "Material"
@@ -1189,19 +1178,19 @@ class MaterialPanel(bpy.types.Panel):
 		scene = context.scene
 		if len(scene.bfg.material_decls) > 0:
 			col = self.layout.column()
-			col.prop_search(scene.bfg, "active_material_decl_path", scene.bfg, "material_decl_paths", "", icon='MATERIAL_DATA')
+			col.prop_search(scene.bfg, "active_material_decl_path", scene.bfg, "material_decl_paths", "", icon='MATERIAL')
 			col.template_icon_view(scene.bfg, "active_material_decl")
 			col.prop(scene.bfg, "active_material_decl", "")
 			if context.active_object and len(context.selected_objects) > 0 and hasattr(context.active_object.data, "materials"):
 				if context.active_object.bfg.type == 'PLANE':
-					col.label("Assign:", icon='MATERIAL_DATA')
+					col.label("Assign:", icon='MATERIAL')
 					row = col.row(align=True)
 					row.operator(AssignMaterial.bl_idname, "Ceiling").where = 'CEILING'
 					row.operator(AssignMaterial.bl_idname, "Wall").where = 'WALL'
 					row.operator(AssignMaterial.bl_idname, "Floor").where = 'FLOOR'
 					row.operator(AssignMaterial.bl_idname, "All").where = 'ALL'
 				else:
-					col.operator(AssignMaterial.bl_idname, AssignMaterial.bl_label, icon='MATERIAL_DATA')
+					col.operator(AssignMaterial.bl_idname, AssignMaterial.bl_label, icon='MATERIAL')
 
 class ObjectPanel(bpy.types.Panel):
 	bl_label = "Object"
@@ -1422,7 +1411,7 @@ def menu_func_export(self, context):
 	self.layout.operator(ExportMap.bl_idname, "RBDOOM-3-BFG map (.map)")
 	
 class BfgScenePropertyGroup(bpy.types.PropertyGroup):
-	game_path = bpy.props.StringProperty(name="RBDOOM-3-BFG Path", subtype='DIR_PATH')
+	game_path = bpy.props.StringProperty(name="RBDOOM-3-BFG Path", description="RBDOOM-3-BFG Path", subtype='DIR_PATH')
 	mod_dir = bpy.props.StringProperty(name="Mod Directory")
 	wireframe_rooms = bpy.props.BoolProperty(name="Wireframe rooms", default=True, update=update_wireframe_rooms)
 	backface_culling = bpy.props.BoolProperty(name="Backface Culling", get=get_backface_culling, set=set_backface_culling)
