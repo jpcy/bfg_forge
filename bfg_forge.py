@@ -29,6 +29,10 @@ import glob
 from mathutils import Vector
 import os
 
+# used when creating light and entities, and exporting
+_scale_to_game = 64.0
+_scale_to_blender = 1.0 / _scale_to_game
+
 preview_collections = {}
 
 class Lexer:
@@ -874,9 +878,8 @@ class AddEntity(bpy.types.Operator):
 			context.object.hide_render = True
 
 			# set entity dimensions
-			scale = 64.0
-			mins = Vector([float(i) * (1.0 / scale) for i in entity.mins.split()])
-			maxs = Vector([float(i) * (1.0 / scale) for i in entity.maxs.split()])
+			mins = Vector([float(i) * _scale_to_blender for i in entity.mins.split()])
+			maxs = Vector([float(i) * _scale_to_blender for i in entity.maxs.split()])
 			size = maxs + -mins
 			obj.dimensions = size
 			
@@ -893,7 +896,6 @@ class AddLight(bpy.types.Operator):
 	bl_label = "Add Light"
 	
 	def execute(self, context):
-		scale = 64.0
 		if context.active_object:
 			bpy.ops.object.mode_set(mode='OBJECT')
 		bpy.ops.object.select_all(action='DESELECT')
@@ -902,7 +904,7 @@ class AddLight(bpy.types.Operator):
 		context.scene.objects.link(obj)
 		obj.select = True
 		context.scene.objects.active = obj
-		obj.data.distance = 300.0 / scale
+		obj.data.distance = 300.0 * _scale_to_blender
 		obj.data.energy = obj.data.distance
 		#obj.scale = obj.distance
 		#obj.show_bounds = True
@@ -1281,7 +1283,6 @@ class ExportMap(bpy.types.Operator, ExportHelper):
 	bl_label = "Export RBDOOM-3-BFG map"
 	bl_options = {'PRESET'}
 	filename_ext = ".map"
-	scale = bpy.props.FloatProperty(name="Scale", default=64, min=1, max=1024)
 	
 	def write_mesh(self, f, context, obj):
 		# need a temp mesh to store the result of to_mesh and a temp object for mesh operator
@@ -1328,7 +1329,7 @@ class ExportMap(bpy.types.Operator, ExportHelper):
 		for i, v in enumerate(mesh.vertices):
 			for vm in vert_map[i]:
 				uv = mesh.uv_layers[0].data[vm[1]].uv
-				f.write("   ( %s %s %s %s %s %s %s %s )\n" % (ftos(v.co.x * self.scale), ftos(v.co.y * self.scale), ftos(v.co.z * self.scale), ftos(uv.x), ftos(uv.y), ftos(v.normal.x), ftos(v.normal.y), ftos(v.normal.z)))
+				f.write("   ( %s %s %s %s %s %s %s %s )\n" % (ftos(v.co.x * _scale_to_game), ftos(v.co.y * _scale_to_game), ftos(v.co.z * _scale_to_game), ftos(uv.x), ftos(uv.y), ftos(v.normal.x), ftos(v.normal.y), ftos(v.normal.z)))
 		f.write("  )\n")
 		
 		# faces
@@ -1374,15 +1375,15 @@ class ExportMap(bpy.types.Operator, ExportHelper):
 					f.write("{\n")
 					f.write("\"classname\" \"%s\"\n" % obj.bfg.classname)
 					f.write("\"name\" \"%s\"\n" % obj.name)
-					f.write("\"origin\" \"%s %s %s\"\n" % (ftos(obj.location[0] * self.scale), ftos(obj.location[1] * self.scale), ftos(obj.location[2] * self.scale)))
+					f.write("\"origin\" \"%s %s %s\"\n" % (ftos(obj.location[0] * _scale_to_game), ftos(obj.location[1] * _scale_to_game), ftos(obj.location[2] * _scale_to_game)))
 					f.write("}\n")
 				if obj.type == 'LAMP':
 					f.write("{\n")
 					f.write('"classname" "light"\n')
 					f.write('"name" "%s"\n' % obj.name)
-					f.write('"origin" "%s %s %s"\n' % (ftos(obj.location[0] * self.scale), ftos(obj.location[1] * self.scale), ftos(obj.location[2] * self.scale)))
+					f.write('"origin" "%s %s %s"\n' % (ftos(obj.location[0] * _scale_to_game), ftos(obj.location[1] * _scale_to_game), ftos(obj.location[2] * _scale_to_game)))
 					f.write('"light_center" "0 0 0"\n')
-					radius = ftos(obj.data.distance * self.scale)
+					radius = ftos(obj.data.distance * _scale_to_game)
 					f.write('"light_radius" "%s %s %s"\n' % (radius, radius, radius))
 					f.write('"_color" "%s %s %s"\n' % (ftos(obj.data.color[0]), ftos(obj.data.color[1]), ftos(obj.data.color[2])))
 					f.write('"nospecular" "%d"\n' % 0 if obj.data.use_specular else 1)
