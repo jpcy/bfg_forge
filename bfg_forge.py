@@ -1155,20 +1155,17 @@ class CreatePanel(bpy.types.Panel):
 	
 	def draw(self, context):
 		scene = context.scene
-		col = self.layout.column(align=True)
-		col.operator(AddRoom.bl_idname, "Add 2D Room", icon='SURFACE_NCURVE')
-		col.operator(AddBrush.bl_idname, "Add 3D Room", icon='SNAP_FACE').s_type = 'MESH'
-		col.operator(AddBrush.bl_idname, "Add Brush", icon='SNAP_VOLUME').s_type = 'BRUSH'
+		col = self.layout.column()
+		box = col.box()
+		sub = box.column(align=True)
+		sub.label("Map", icon='MOD_BUILD')
+		sub.operator(AddRoom.bl_idname, "Add 2D Room", icon='SURFACE_NCURVE')
+		sub.operator(AddBrush.bl_idname, "Add 3D Room", icon='SNAP_FACE').s_type = 'MESH'
+		sub.operator(AddBrush.bl_idname, "Add Brush", icon='SNAP_VOLUME').s_type = 'BRUSH'
 		if len(scene.bfg.entities) > 0:
-			box = self.layout.box()
-			col = box.column()
-			col.prop_search(scene.bfg, "active_entity", scene.bfg, "entities", "", icon='SCRIPT')
-			ae = scene.bfg.active_entity
-			if ae != None and ae != "":
-				usage = scene.bfg.entities[ae].usage
-				if usage:
-					col.label(usage)
-				col.operator(AddEntity.bl_idname, AddEntity.bl_label, icon='POSE_HLT')
+			row = col.row(align=True)
+			row.prop_search(scene.bfg, "active_entity", scene.bfg, "entities", "", icon='SCRIPT')
+			row.operator(AddEntity.bl_idname, AddEntity.bl_label, icon='POSE_HLT')
 		col.operator(AddLight.bl_idname, AddLight.bl_label, icon='LAMP_POINT')
 		
 class MapPanel(bpy.types.Panel):
