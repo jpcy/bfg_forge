@@ -26,7 +26,7 @@ from bpy_extras.io_utils import ExportHelper
 import bpy.utils.previews
 import bmesh
 import glob
-from mathutils import Vector
+from mathutils import Euler, Vector
 import os
 
 # used when creating light and entities, and exporting
@@ -1312,6 +1312,13 @@ class ExportMap(bpy.types.Operator, ExportHelper):
 						write_kvp("origin", "%s %s %s" % (ftos(obj.location[0] * _scale_to_game), ftos(obj.location[1] * _scale_to_game), ftos(obj.location[2] * _scale_to_game)))
 						if obj.bfg.type == 'STATIC_MODEL':
 							write_kvp("model", obj.bfg.entity_model)
+							angles = obj.rotation_euler
+							rot = Euler((-angles[0], -angles[1], -angles[2]), 'XYZ').to_matrix()
+							write_kvp("rotation", "%s %s %s %s %s %s %s %s %s" % (
+								ftos(rot[0][0]), ftos(rot[0][1]), ftos(rot[0][2]),
+								ftos(rot[1][0]), ftos(rot[1][1]), ftos(rot[1][2]),
+								ftos(rot[2][0]), ftos(rot[2][1]), ftos(rot[2][2])
+							))
 						f.write("}\n")
 					elif obj.type == 'LAMP':
 						f.write("{\n")
