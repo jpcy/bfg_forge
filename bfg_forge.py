@@ -1415,6 +1415,8 @@ class ObjectPanel(bpy.types.Panel):
 			if obj.type == 'LAMP':
 				obj_icon = 'LAMP_POINT'
 			col.label(obj.name, icon=obj_icon)
+			if obj.bfg.type != 'NONE':
+				col.label("Type: " + obj.bfg.bl_rna.properties['type'].enum_items[obj.bfg.type].name)
 			if obj.bfg.type == 'PLANE' and obj.modifiers:
 				mod = obj.modifiers[0]
 				if mod.type == 'SOLIDIFY':
