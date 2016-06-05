@@ -188,6 +188,20 @@ class FileSystem:
 					if not base in touched_files:
 						touched_files.append(base)
 						callback(full_path, f)
+
+################################################################################
+## UTILITY FUNCTIONS
+################################################################################
+
+def set_object_mode_and_clear_selection():
+	if bpy.context.active_object:
+		bpy.ops.object.mode_set(mode='OBJECT')
+	bpy.ops.object.select_all(action='DESELECT')
+	
+def link_active_object_to_group(group):
+	if not group in bpy.data.groups:
+		bpy.ops.group.create(name=group)
+	bpy.ops.object.group_link(group=group)
 						
 ################################################################################
 ## MATERIALS
@@ -623,9 +637,7 @@ class AddEntity(bpy.types.Operator):
 		if ae != None and ae != "":
 			entity = context.scene.bfg.entities[ae]
 			create_object_color_material()
-			if context.active_object:
-				bpy.ops.object.mode_set(mode='OBJECT')
-			bpy.ops.object.select_all(action='DESELECT')
+			set_object_mode_and_clear_selection()
 			bpy.ops.mesh.primitive_cube_add()
 			obj = context.active_object
 			obj.bfg.type = 'ENTITY'
@@ -663,9 +675,7 @@ class AddLight(bpy.types.Operator):
 	bl_label = "Add Light"
 	
 	def execute(self, context):
-		if context.active_object:
-			bpy.ops.object.mode_set(mode='OBJECT')
-		bpy.ops.object.select_all(action='DESELECT')
+		set_object_mode_and_clear_selection()
 		data = bpy.data.lamps.new(name="Light", type='POINT')
 		obj = bpy.data.objects.new(name="Light", object_data=data)
 		context.scene.objects.link(obj)
@@ -744,9 +754,7 @@ class AddStaticModel(bpy.types.Operator):
 			self.report({'ERROR'}, "Unsupported extension \"%s\"" % extension)
 			return {'FINISHED'}
 		
-		if context.active_object:
-			bpy.ops.object.mode_set(mode='OBJECT')
-		bpy.ops.object.select_all(action='DESELECT')
+		set_object_mode_and_clear_selection()
 		
 		# lwo importer doesn't select or make active the object in creates...
 		# need to diff scene objects before and after import to find it
@@ -858,20 +866,13 @@ def add_all_materials(obj):
 			obj.data.materials.append(m)
 		i += 1
 		
-def link_active_object_to_group(group):
-	if not group in bpy.data.groups:
-		bpy.ops.group.create(name=group)
-	bpy.ops.object.group_link(group=group)
-
 class AddRoom(bpy.types.Operator):
 	bl_idname = "scene.add_room"
 	bl_label = "Add Room"
 
 	def execute(self, context):
 		scene = context.scene
-		if context.active_object:
-			bpy.ops.object.mode_set(mode='OBJECT')
-		bpy.ops.object.select_all(action='DESELECT')
+		set_object_mode_and_clear_selection()
 		bpy.ops.mesh.primitive_plane_add(radius=1)
 		bpy.ops.object.modifier_add(type='SOLIDIFY')
 		obj = context.active_object
@@ -922,9 +923,7 @@ class AddBrush(bpy.types.Operator):
 
 	def execute(self, context):
 		scene = context.scene
-		if context.active_object:
-			bpy.ops.object.mode_set(mode='OBJECT')
-		bpy.ops.object.select_all(action='DESELECT')
+		set_object_mode_and_clear_selection()
 		bpy.ops.mesh.primitive_cube_add(radius=1)
 		obj = context.active_object
 		if context.scene.bfg.wireframe_rooms:
@@ -997,8 +996,7 @@ class BuildMap(bpy.types.Operator):
 		# create map object
 		# if a map object already exists, its old mesh is removed
 		# if there is at least one room, it is used as the starting point for the map mesh, otherwise an empty mesh is created
-		if context.active_object:
-			bpy.ops.object.mode_set(mode='OBJECT')
+		set_object_mode_and_clear_selection()
 		old_map_mesh = None
 		map_name = "_map"
 		map_mesh_name = map_name + "_mesh"
@@ -1295,11 +1293,7 @@ class ExportMap(bpy.types.Operator, ExportHelper):
 		if not "worldspawn" in bpy.data.groups:
 			self.report({'ERROR'}, "No worldspawn group found. Either build the map or create a group named \"worldspawn\" and link an object to it.")
 		else:
-			# get out of edit mode and clear selection
-			if context.active_object:
-				bpy.ops.object.mode_set(mode='OBJECT')
-			bpy.ops.object.select_all(action='DESELECT')
-		
+			set_object_mode_and_clear_selection()
 			f = open(self.filepath, 'w')
 			f.write("Version 3\n")
 			f.write("{\n")
