@@ -747,7 +747,7 @@ class AddStaticModel(bpy.types.Operator):
 		# check that the required import addon is enabled
 		extension = os.path.splitext(self.properties.filepath)[1]
 		if extension.lower() == ".lwo":
-			if not bpy.ops.import_scene.lwo:
+			if not hasattr(bpy.types, "IMPORT_SCENE_OT_lwo"):
 				self.report({'ERROR'}, "LightWave Object (.lwo) import addon not enabled")
 				return {'FINISHED'}
 		else:
