@@ -733,6 +733,7 @@ class AddStaticModel(bpy.types.Operator):
 	bl_idname = "scene.add_static_model"
 	bl_label = "Add Static Model"
 	filepath = bpy.props.StringProperty(default="", options={'HIDDEN', 'SKIP_SAVE'})
+	filter_glob = bpy.props.StringProperty(default="*.lwo", options={'HIDDEN'})
 	
 	def execute(self, context):
 		# the func_static entity model value looks like this:
