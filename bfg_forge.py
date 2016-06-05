@@ -193,6 +193,9 @@ class FileSystem:
 ## UTILITY FUNCTIONS
 ################################################################################
 
+def ftos(a):
+	return ("%f" % a).rstrip('0').rstrip('.')
+	
 def set_object_mode_and_clear_selection():
 	if bpy.context.active_object:
 		bpy.ops.object.mode_set(mode='OBJECT')
@@ -1211,9 +1214,6 @@ class NudgeUV(bpy.types.Operator):
 ## EXPORT
 ################################################################################
 				
-def ftos(a):
-	return ("%f" % a).rstrip('0').rstrip('.')
-		
 class ExportMap(bpy.types.Operator, ExportHelper):
 	bl_idname = "export_scene.map"
 	bl_label = "Export RBDOOM-3-BFG map"
@@ -1295,37 +1295,38 @@ class ExportMap(bpy.types.Operator, ExportHelper):
 			self.report({'ERROR'}, "No worldspawn group found. Either build the map or create a group named \"worldspawn\" and link an object to it.")
 		else:
 			set_object_mode_and_clear_selection()
-			f = open(self.filepath, 'w')
-			f.write("Version 3\n")
-			f.write("{\n")
-			f.write("\"classname\" \"worldspawn\"\n")
-			for obj in bpy.data.groups["worldspawn"].objects:
-				self.write_mesh(f, context, obj)
-			f.write("}\n")
-			for obj in context.scene.objects:
-				if obj.bfg.type == 'ENTITY' or obj.bfg.type == 'STATIC_MODEL':
-					f.write("{\n")
-					f.write("\"classname\" \"%s\"\n" % obj.bfg.classname)
-					f.write("\"name\" \"%s\"\n" % obj.name)
-					f.write("\"origin\" \"%s %s %s\"\n" % (ftos(obj.location[0] * _scale_to_game), ftos(obj.location[1] * _scale_to_game), ftos(obj.location[2] * _scale_to_game)))
-					if obj.bfg.type == 'STATIC_MODEL':
-						f.write("\"model\" \"%s\"\n" % obj.bfg.entity_model)
-					f.write("}\n")
-				elif obj.type == 'LAMP':
-					f.write("{\n")
-					f.write('"classname" "light"\n')
-					f.write('"name" "%s"\n' % obj.name)
-					f.write('"origin" "%s %s %s"\n' % (ftos(obj.location[0] * _scale_to_game), ftos(obj.location[1] * _scale_to_game), ftos(obj.location[2] * _scale_to_game)))
-					f.write('"light_center" "0 0 0"\n')
-					radius = ftos(obj.data.distance * _scale_to_game)
-					f.write('"light_radius" "%s %s %s"\n' % (radius, radius, radius))
-					f.write('"_color" "%s %s %s"\n' % (ftos(obj.data.color[0]), ftos(obj.data.color[1]), ftos(obj.data.color[2])))
-					f.write('"nospecular" "%d"\n' % 0 if obj.data.use_specular else 1)
-					f.write('"nodiffuse" "%d"\n' % 0 if obj.data.use_diffuse else 1)
-					if obj.bfg.light_material != "default":
-						f.write('"texture" "%s"\n' % obj.bfg.light_material)
-					f.write("}\n")
-			f.close()
+			with open(self.filepath, 'w') as f:
+				def write_kvp(key, value):
+					f.write('"%s" "%s"\n' % (key, value))
+				f.write("Version 3\n")
+				f.write("{\n")
+				write_kvp("classname", "worldspawn")
+				for obj in bpy.data.groups["worldspawn"].objects:
+					self.write_mesh(f, context, obj)
+				f.write("}\n")
+				for obj in context.scene.objects:
+					if obj.bfg.type == 'ENTITY' or obj.bfg.type == 'STATIC_MODEL':
+						f.write("{\n")
+						write_kvp("classname", obj.bfg.classname)
+						write_kvp("name", obj.name)
+						write_kvp("origin", "%s %s %s" % (ftos(obj.location[0] * _scale_to_game), ftos(obj.location[1] * _scale_to_game), ftos(obj.location[2] * _scale_to_game)))
+						if obj.bfg.type == 'STATIC_MODEL':
+							write_kvp("model", obj.bfg.entity_model)
+						f.write("}\n")
+					elif obj.type == 'LAMP':
+						f.write("{\n")
+						write_kvp("classname", "light")
+						write_kvp("name", obj.name)
+						write_kvp("origin", "%s %s %s" % (ftos(obj.location[0] * _scale_to_game), ftos(obj.location[1] * _scale_to_game), ftos(obj.location[2] * _scale_to_game)))
+						write_kvp("light_center", "0 0 0")
+						radius = ftos(obj.data.distance * _scale_to_game)
+						write_kvp("light_radius", "%s %s %s" % (radius, radius, radius))
+						write_kvp("_color", "%s %s %s" % (ftos(obj.data.color[0]), ftos(obj.data.color[1]), ftos(obj.data.color[2])))
+						write_kvp("nospecular", "%d" % 0 if obj.data.use_specular else 1)
+						write_kvp("nodiffuse", "%d" % 0 if obj.data.use_diffuse else 1)
+						if obj.bfg.light_material != "default":
+							write_kvp("texture", obj.bfg.light_material)
+						f.write("}\n")
 		return {'FINISHED'}
 	
 def menu_func_export(self, context):
