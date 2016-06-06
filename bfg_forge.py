@@ -21,14 +21,10 @@ bl_info = {
 	'category': 'Game Engine'
 	}
 	
-import bpy
+import bpy, bpy.utils.previews, bmesh, glob, json, math, os
 from bpy_extras.io_utils import ExportHelper
-import bpy.utils.previews
-import bmesh
-import glob
-import math
+from collections import OrderedDict
 from mathutils import Euler, Vector
-import os
 
 # used when creating light and entities, and exporting
 _scale_to_game = 64.0
@@ -1229,12 +1225,13 @@ class NudgeUV(bpy.types.Operator):
 ################################################################################
 				
 class ExportMap(bpy.types.Operator, ExportHelper):
-	bl_idname = "export_scene.map"
-	bl_label = "Export RBDOOM-3-BFG map"
+	bl_idname = "export_scene.rbdoom_map_json"
+	bl_label = "Export RBDOOM-3-BFG JSON map"
 	bl_options = {'PRESET'}
-	filename_ext = ".map"
+	filename_ext = ".json"
+	indent = bpy.props.BoolProperty(name="Indent", default=False)
 	
-	def write_mesh(self, f, context, obj):
+	def create_primitive(self, context, obj, index):
 		# need a temp mesh to store the result of to_mesh and a temp object for mesh operator
 		temp_mesh = obj.to_mesh(context.scene, True, 'PREVIEW')
 		temp_mesh.name = "_export_mesh"
@@ -1267,94 +1264,98 @@ class ExportMap(bpy.types.Operator, ExportHelper):
 			for vm in vert_map[i]:
 				vm[0] = num_vertices
 				num_vertices += 1
+				
+		prim = OrderedDict()
+		prim["primitive"] = index
 		
-		# header
-		f.write("{\n")
-		f.write(" meshDef\n")
-		f.write(" {\n")
-		f.write("  ( %d %d 0 0 0 )\n" % (num_vertices, len(mesh.polygons)))
-
-		# vertices				
-		f.write("  (\n")
+		# vertices	
+		verts = prim["verts"] = []		
 		for i, v in enumerate(mesh.vertices):
 			for vm in vert_map[i]:
 				uv = mesh.uv_layers[0].data[vm[1]].uv
-				f.write("   ( %s %s %s %s %s %s %s %s )\n" % (ftos(v.co.x * _scale_to_game), ftos(v.co.y * _scale_to_game), ftos(v.co.z * _scale_to_game), ftos(uv.x), ftos(uv.y), ftos(v.normal.x), ftos(v.normal.y), ftos(v.normal.z)))
-		f.write("  )\n")
+				vert = OrderedDict()
+				vert["xyz"] = (v.co.x * _scale_to_game, v.co.y * _scale_to_game, v.co.z * _scale_to_game)
+				vert["st"] = (uv.x, uv.y)
+				vert["normal"] = (v.normal.x, v.normal.y, v.normal.z)
+				verts.append(vert)
 		
-		# faces
-		f.write("  (\n")
+		# polygons
+		polygons = prim["polygons"] = []
 		for p in mesh.polygons:
-			f.write("   \"%s\" %d = " % (obj.material_slots[p.material_index].name, p.loop_total))
-			for i in reversed(p.loop_indices):
+			poly = OrderedDict()
+			poly["material"] = obj.material_slots[p.material_index].name
+			indices = poly["indices"] = []
+			for i in p.loop_indices:
 				loop = mesh.loops[i]
 				v = mesh.vertices[loop.vertex_index]
 				uv = mesh.uv_layers[0].data[loop.index].uv
 				# find the vert_map nested list element with the matching loop.index
 				vm = next(x for x in vert_map[loop.vertex_index] if x[1] == loop.index)
-				f.write("%d " % vm[0])
-			f.write("\n")
-		f.write("  )\n")
-		
-		# footer
-		f.write(" }\n")
-		f.write("}\n")
-		
+				indices.append(vm[0])
+			polygons.append(poly)
+
 		# finished, delete the temp object and mesh
 		bpy.ops.object.delete()
 		bpy.data.meshes.remove(mesh)
+		return prim
 		
 	def execute(self, context):
 		if not "worldspawn" in bpy.data.groups:
 			self.report({'ERROR'}, "No worldspawn group found. Either build the map or create a group named \"worldspawn\" and link an object to it.")
 		else:
 			set_object_mode_and_clear_selection()
-			with open(self.filepath, 'w') as f:
-				def write_kvp(key, value):
-					f.write('"%s" "%s"\n' % (key, value))
-				f.write("Version 3\n")
-				f.write("{\n")
-				write_kvp("classname", "worldspawn")
-				for obj in bpy.data.groups["worldspawn"].objects:
-					self.write_mesh(f, context, obj)
-				f.write("}\n")
-				for obj in context.scene.objects:
-					if obj.bfg.type == 'ENTITY' or obj.bfg.type == 'STATIC_MODEL':
-						f.write("{\n")
-						write_kvp("classname", obj.bfg.classname)
-						write_kvp("name", obj.name)
-						write_kvp("origin", "%s %s %s" % (ftos(obj.location[0] * _scale_to_game), ftos(obj.location[1] * _scale_to_game), ftos(obj.location[2] * _scale_to_game)))
-						if obj.bfg.type == 'ENTITY':
-							if obj.rotation_euler.z != 0.0:
-								write_kvp("angle", ftos(math.degrees(obj.rotation_euler.z)))
-						elif obj.bfg.type == 'STATIC_MODEL':
-							write_kvp("model", obj.bfg.entity_model)
-							angles = obj.rotation_euler
-							rot = Euler((-angles[0], -angles[1], -angles[2]), 'XYZ').to_matrix()
-							write_kvp("rotation", "%s %s %s %s %s %s %s %s %s" % (
-								ftos(rot[0][0]), ftos(rot[0][1]), ftos(rot[0][2]),
-								ftos(rot[1][0]), ftos(rot[1][1]), ftos(rot[1][2]),
-								ftos(rot[2][0]), ftos(rot[2][1]), ftos(rot[2][2])
-							))
-						f.write("}\n")
+			data = OrderedDict()
+			data["version"] = 3
+			entities = data["entities"] = []
+			entity_index = 0
+			
+			# write worldspawn
+			worldspawn = OrderedDict()
+			worldspawn["entity"] = entity_index
+			worldspawn["classname"] = "worldspawn"
+			primitives = worldspawn["primitives"] = []
+			for i, obj in enumerate(bpy.data.groups["worldspawn"].objects):
+				primitives.append(self.create_primitive(context, obj, i))
+			entities.append(worldspawn)
+			entity_index += 1
+			
+			# write the rest of the entities
+			for obj in context.scene.objects:
+				if obj.bfg.type == 'ENTITY' or obj.bfg.type == 'STATIC_MODEL' or obj.type == 'LAMP':
+					ent = OrderedDict()
+					ent["entity"] = entity_index
+					ent["classname"] = "light" if obj.type == 'LAMP' else obj.bfg.classname
+					ent["name"] = obj.name
+					ent["origin"] = "%s %s %s" % (ftos(obj.location[0] * _scale_to_game), ftos(obj.location[1] * _scale_to_game), ftos(obj.location[2] * _scale_to_game))
+					if obj.bfg.type == 'ENTITY':
+						if obj.rotation_euler.z != 0.0:
+							ent["angle"] = ftos(math.degrees(obj.rotation_euler.z))
+					elif obj.bfg.type == 'STATIC_MODEL':
+						ent["model"] = obj.bfg.entity_model.replace("\\", "/")
+						angles = obj.rotation_euler
+						rot = Euler((-angles[0], -angles[1], -angles[2]), 'XYZ').to_matrix()
+						ent["rotation"] = "%s %s %s %s %s %s %s %s %s" % (
+							ftos(rot[0][0]), ftos(rot[0][1]), ftos(rot[0][2]),
+							ftos(rot[1][0]), ftos(rot[1][1]), ftos(rot[1][2]),
+							ftos(rot[2][0]), ftos(rot[2][1]), ftos(rot[2][2])
+						)
 					elif obj.type == 'LAMP':
-						f.write("{\n")
-						write_kvp("classname", "light")
-						write_kvp("name", obj.name)
-						write_kvp("origin", "%s %s %s" % (ftos(obj.location[0] * _scale_to_game), ftos(obj.location[1] * _scale_to_game), ftos(obj.location[2] * _scale_to_game)))
-						write_kvp("light_center", "0 0 0")
+						ent["light_center"] = "0 0 0"
 						radius = ftos(obj.data.distance * _scale_to_game)
-						write_kvp("light_radius", "%s %s %s" % (radius, radius, radius))
-						write_kvp("_color", "%s %s %s" % (ftos(obj.data.color[0]), ftos(obj.data.color[1]), ftos(obj.data.color[2])))
-						write_kvp("nospecular", "%d" % 0 if obj.data.use_specular else 1)
-						write_kvp("nodiffuse", "%d" % 0 if obj.data.use_diffuse else 1)
+						ent["light_radius"] = "%s %s %s" % (radius, radius, radius)
+						ent["_color"] = "%s %s %s" % (ftos(obj.data.color[0]), ftos(obj.data.color[1]), ftos(obj.data.color[2]))
+						ent["nospecular"] = "%d" % 0 if obj.data.use_specular else 1
+						ent["nodiffuse"] = "%d" % 0 if obj.data.use_diffuse else 1
 						if obj.bfg.light_material != "default":
-							write_kvp("texture", obj.bfg.light_material)
-						f.write("}\n")
+							ent["texture"] = obj.bfg.light_material
+					entities.append(ent)
+					entity_index += 1
+			with open(self.filepath, 'w') as f:
+				json.dump(data, f, indent="\t" if self.indent else None)
 		return {'FINISHED'}
 	
 def menu_func_export(self, context):
-	self.layout.operator(ExportMap.bl_idname, "RBDOOM-3-BFG map (.map)")
+	self.layout.operator(ExportMap.bl_idname, "RBDOOM-3-BFG map (.json)")
 		
 ################################################################################
 ## GUI PANELS
