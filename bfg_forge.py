@@ -386,7 +386,6 @@ def create_material_texture(fs, mat, texture, slot_number):
 		
 	# texture image may have changed
 	img_filename = fs.find_image_file_path(texture)
-	print(mat.name, img_filename)
 	if img_filename:
 		img_filename = bpy.path.relpath(img_filename) # use relative path for image filenames
 	if not tex.image or tex.image.filepath != img_filename:
@@ -760,20 +759,30 @@ class AddStaticModel(bpy.types.Operator):
 		
 		set_object_mode_and_clear_selection()
 		
-		# lwo importer doesn't select or make active the object in creates...
-		# need to diff scene objects before and after import to find it
-		obj_names = []
+		# if the model has already been loaded before, don't import - link to the existing mesh
+		mesh = None
 		for obj in context.scene.objects:
-			obj_names.append(obj.name)
-		bpy.ops.import_scene.lwo(filepath=self.properties.filepath, USE_EXISTING_MATERIALS=True)
-		imported_obj = None
-		for obj in context.scene.objects:
-			if not obj.name in obj_names:
-				imported_obj = obj
+			if obj.bfg.type == 'STATIC_MODEL' and obj.bfg.entity_model == relative_path:
+				mesh = obj.data
 				break
-		if not imported_obj:
-			return {'FINISHED'} # import must have failed
-		obj = imported_obj
+		if mesh:
+			obj = bpy.data.objects.new(os.path.splitext(os.path.basename(relative_path))[0], mesh)
+			context.scene.objects.link(obj)
+		else:
+			# lwo importer doesn't select or make active the object in creates...
+			# need to diff scene objects before and after import to find it
+			obj_names = []
+			for obj in context.scene.objects:
+				obj_names.append(obj.name)
+			bpy.ops.import_scene.lwo(filepath=self.properties.filepath, USE_EXISTING_MATERIALS=True)
+			imported_obj = None
+			for obj in context.scene.objects:
+				if not obj.name in obj_names:
+					imported_obj = obj
+					break
+			if not imported_obj:
+				return {'FINISHED'} # import must have failed
+			obj = imported_obj
 		context.scene.objects.active = obj
 		obj.select = True
 		obj.bfg.type = 'STATIC_MODEL'
