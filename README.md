@@ -5,6 +5,8 @@ A Blender addon for [RBDOOM-3-BFG](https://github.com/RobertBeckebans/RBDOOM-3-B
 
 Based on [Level Buddy by Matt Lucas](https://matt-lucas.itch.io/level-buddy)
 
+[![screenshot](http://i.imgur.com/ipucRyN.png)](http://i.imgur.com/mTmWcBk.jpg)
+
 Status: WIP
 
 Requires:
