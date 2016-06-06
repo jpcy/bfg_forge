@@ -789,6 +789,7 @@ class AddStaticModel(bpy.types.Operator):
 		obj.bfg.classname = "func_static"
 		obj.bfg.entity_model = relative_path
 		obj.scale = [_scale_to_blender, _scale_to_blender, _scale_to_blender]
+		obj.lock_scale = [True, True, True]
 		link_active_object_to_group("static models")
 		refresh_object_materials(context, obj)
 		return {'FINISHED'}
