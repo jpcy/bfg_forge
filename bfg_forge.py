@@ -384,7 +384,12 @@ def create_material_texture(fs, mat, texture, slot_number):
 	# texture image may have changed
 	img_filename = fs.find_image_file_path(texture)
 	if img_filename:
-		img_filename = bpy.path.relpath(img_filename) # use relative path for image filenames
+		# try to use relative paths for image filenames
+		print(img_filename)
+		try:
+			img_filename = bpy.path.relpath(img_filename)
+		except ValueError:
+			pass
 	if not tex.image or tex.image.filepath != img_filename:
 		try:
 			img = bpy.data.images.load(img_filename)
