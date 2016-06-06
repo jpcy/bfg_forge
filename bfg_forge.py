@@ -26,6 +26,7 @@ from bpy_extras.io_utils import ExportHelper
 import bpy.utils.previews
 import bmesh
 import glob
+import math
 from mathutils import Euler, Vector
 import os
 
@@ -645,11 +646,14 @@ class AddEntity(bpy.types.Operator):
 			obj.bfg.type = 'ENTITY'
 			obj.bfg.classname = ae
 			obj.name = ae
-			obj.color = [float(i) for i in entity.color.split()] + [float(1)] # "r g b"
+			obj.color = [float(i) for i in entity.color.split()] + [float(0.5)] # "r g b"
 			obj.data.name = ae
 			obj.data.materials.append(bpy.data.materials["_object_color"])
 			obj.lock_rotation = [True, True, False]
 			obj.lock_scale = [True, True, True]
+			obj.show_axis = True # x will be forward
+			obj.show_wire = True
+			obj.show_transparent = True
 			context.scene.objects.active = obj
 			link_active_object_to_group("entities")
 			context.object.hide_render = True
@@ -1320,7 +1324,10 @@ class ExportMap(bpy.types.Operator, ExportHelper):
 						write_kvp("classname", obj.bfg.classname)
 						write_kvp("name", obj.name)
 						write_kvp("origin", "%s %s %s" % (ftos(obj.location[0] * _scale_to_game), ftos(obj.location[1] * _scale_to_game), ftos(obj.location[2] * _scale_to_game)))
-						if obj.bfg.type == 'STATIC_MODEL':
+						if obj.bfg.type == 'ENTITY':
+							if obj.rotation_euler.z != 0.0:
+								write_kvp("angle", ftos(math.degrees(obj.rotation_euler.z)))
+						elif obj.bfg.type == 'STATIC_MODEL':
 							write_kvp("model", obj.bfg.entity_model)
 							angles = obj.rotation_euler
 							rot = Euler((-angles[0], -angles[1], -angles[2]), 'XYZ').to_matrix()
