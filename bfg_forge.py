@@ -21,7 +21,7 @@ bl_info = {
 	'category': 'Game Engine'
 	}
 	
-import bpy, bpy.utils.previews, bmesh, glob, json, math, os
+import bpy, bpy.utils.previews, bmesh, glob, json, math, os, time
 from bpy_extras.io_utils import ExportHelper
 from collections import OrderedDict
 from mathutils import Euler, Vector
@@ -365,11 +365,12 @@ class ImportMaterials(bpy.types.Operator):
 				self.num_materials_created += result[0]
 				self.num_materials_updated += result[1]
 
+			start_time = time.time() 
 			fs = FileSystem()
 			fs.for_each_file(r"materials\*.mtr", pmf)
 			self.update_material_decl_paths(context.scene)
 			preview_collections["light"].needs_refresh = True
-			self.report({'INFO'}, "Imported %d materials, updated %d" % (self.num_materials_created, self.num_materials_updated))
+			self.report({'INFO'}, "Imported %d materials, updated %d in %.2f seconds" % (self.num_materials_created, self.num_materials_updated, time.time() - start_time))
 		else:
 			self.report({'ERROR'}, "RBDOOM-3-BFG path not set")
 		return {'FINISHED'}
@@ -614,9 +615,10 @@ class ImportEntities(bpy.types.Operator):
 				self.num_entities_created += result[0]
 				self.num_entities_updated += result[1]
 
+			start_time = time.time() 
 			fs = FileSystem()
 			fs.for_each_file(r"def\*.def", pdf)
-			self.report({'INFO'}, "Imported %d entities, updated %d" % (self.num_entities_created, self.num_entities_updated))
+			self.report({'INFO'}, "Imported %d entities, updated %d in %.2f seconds" % (self.num_entities_created, self.num_entities_updated, time.time() - start_time))
 		else:
 			self.report({'ERROR'}, "RBDOOM-3-BFG path not set")
 		return {'FINISHED'}
