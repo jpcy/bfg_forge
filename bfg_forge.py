@@ -442,7 +442,7 @@ class AssignMaterial(bpy.types.Operator):
 	where = bpy.props.StringProperty(name="where", default='ALL')
 	
 	def assign_to_object(self, obj, mat):
-		if obj.bfg.type == 'PLANE':
+		if obj.bfg.type == '2D_ROOM':
 			if self.where == 'CEILING' or self.where == 'ALL':
 				obj.bfg.ceiling_material = mat.name
 			if self.where == 'WALL' or self.where == 'ALL':
@@ -819,7 +819,7 @@ def update_room_plane_materials(obj):
 
 def update_room(self, context):
 	obj = context.active_object
-	if obj.bfg.type == 'PLANE':
+	if obj.bfg.type == '2D_ROOM':
 		update_room_plane_modifier(obj)
 		update_room_plane_materials(obj)
 
@@ -895,7 +895,7 @@ class AddRoom(bpy.types.Operator):
 		obj.name = "room2D"
 		obj.data.name = "room2D"
 		obj.bfg.room_height = 4
-		obj.bfg.type = 'PLANE'
+		obj.bfg.type = '2D_ROOM'
 		if context.scene.bfg.wireframe_rooms:
 			obj.draw_type = 'WIRE'
 		obj.game.physics_type = 'NO_COLLISION'
@@ -941,7 +941,7 @@ class AddBrush(bpy.types.Operator):
 		obj = context.active_object
 		if context.scene.bfg.wireframe_rooms:
 			obj.draw_type = 'WIRE'
-		if self.s_type == 'MESH':
+		if self.s_type == '3D_ROOM':
 			obj.name = "room3D"
 			obj.data.name = "room3D"
 		else:
@@ -958,7 +958,7 @@ class AddBrush(bpy.types.Operator):
 		bpy.ops.object.editmode_toggle()
 		obj.game.physics_type = 'NO_COLLISION'
 		obj.hide_render = True
-		if self.s_type == 'MESH':
+		if self.s_type == '3D_ROOM':
 			link_active_object_to_group("rooms")
 		else:
 			link_active_object_to_group("brushes")
@@ -973,7 +973,7 @@ class CopyRoom(bpy.types.Operator):
 		obj = context.active_object
 		selected_objects = context.selected_objects
 		for s in selected_objects:
-			if s.bfg.type == 'PLANE':
+			if s.bfg.type == '2D_ROOM':
 				if self.copy_op == 'HEIGHT' or self.copy_op == 'ALL':
 					s.bfg.room_height = obj.bfg.room_height
 				if self.copy_op == 'MATERIAL_CEILING' or self.copy_op == 'MATERIAL_ALL' or self.copy_op == 'ALL':
@@ -998,7 +998,7 @@ class BuildMap(bpy.types.Operator):
 		room_list = []
 		brush_list = []
 		for obj in context.visible_objects:
-			if obj.bfg.type in ['MESH', 'PLANE']:
+			if obj.bfg.type in ['2D_ROOM', '3D_ROOM']:
 				room_list.append(obj)
 			elif obj.bfg.type == 'BRUSH':
 				brush_list.append(obj)
@@ -1385,7 +1385,7 @@ class CreatePanel(bpy.types.Panel):
 		row.operator(BuildMap.bl_idname, "Build Map", icon='MOD_BUILD').bool_op = 'UNION'
 		row.prop(context.scene.bfg, "map_layer")
 		col.operator(AddRoom.bl_idname, "Add 2D Room", icon='SURFACE_NCURVE')
-		col.operator(AddBrush.bl_idname, "Add 3D Room", icon='SNAP_FACE').s_type = 'MESH'
+		col.operator(AddBrush.bl_idname, "Add 3D Room", icon='SNAP_FACE').s_type = '3D_ROOM'
 		col.operator(AddBrush.bl_idname, "Add Brush", icon='SNAP_VOLUME').s_type = 'BRUSH'
 		col = self.layout.column()
 		if len(scene.bfg.entities) > 0:
@@ -1409,7 +1409,7 @@ class MaterialPanel(bpy.types.Panel):
 			col.template_icon_view(scene.bfg, "active_material_decl")
 			col.prop(scene.bfg, "active_material_decl", "")
 			if context.active_object and len(context.selected_objects) > 0 and hasattr(context.active_object.data, "materials"):
-				if context.active_object.bfg.type == 'PLANE':
+				if context.active_object.bfg.type == '2D_ROOM':
 					col.label("Assign:", icon='MATERIAL')
 					row = col.row(align=True)
 					row.operator(AssignMaterial.bl_idname, "Ceiling").where = 'CEILING'
@@ -1435,7 +1435,7 @@ class ObjectPanel(bpy.types.Panel):
 			col.label(obj.name, icon=obj_icon)
 			if obj.bfg.type != 'NONE':
 				col.label("Type: " + obj.bfg.bl_rna.properties['type'].enum_items[obj.bfg.type].name)
-			if obj.bfg.type == 'PLANE' and obj.modifiers:
+			if obj.bfg.type == '2D_ROOM' and obj.modifiers:
 				mod = obj.modifiers[0]
 				if mod.type == 'SOLIDIFY':
 					col.separator()
@@ -1523,7 +1523,7 @@ class UvPanel(bpy.types.Panel):
 
 def update_wireframe_rooms(self, context):
 	for obj in context.scene.objects:
-		if obj.bfg.type in ['BRUSH', 'MESH', 'PLANE']:
+		if obj.bfg.type in ['2D_ROOM', '3D_ROOM', 'BRUSH']:
 			obj.draw_type = 'WIRE' if context.scene.bfg.wireframe_rooms else 'TEXTURED'
 			
 def get_backface_culling(self):
@@ -1574,12 +1574,12 @@ class BfgObjectPropertyGroup(bpy.types.PropertyGroup):
 	ceiling_material = bpy.props.StringProperty(name="Ceiling Material", update=update_room)
 	light_material = bpy.props.EnumProperty(name="", items=light_material_preview_items)
 	type = bpy.props.EnumProperty(items=[
-		('STATIC_MODEL', "Static Model", ""),
-		('ENTITY', "Entity", ""),
+		('NONE', "None", ""),
+		('2D_ROOM', "2D Room", ""),
+		('3D_ROOM', "3D Room", ""),
 		('BRUSH', "Brush", ""),
-		('MESH', "3D Room", ""),
-		('PLANE', "2D Room", ""),
-		('NONE', "None", "")
+		('ENTITY', "Entity", ""),
+		('STATIC_MODEL', "Static Model", "")
 	], name="BFG Forge Object Type", default='NONE')
 	
 ################################################################################
