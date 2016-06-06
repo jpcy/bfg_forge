@@ -30,6 +30,8 @@ from mathutils import Euler, Vector
 _scale_to_game = 64.0
 _scale_to_blender = 1.0 / _scale_to_game
 
+_editor_material_paths = ["textures/common", "textures/editor"]
+
 preview_collections = {}
 
 ################################################################################
@@ -227,9 +229,11 @@ def material_decl_preview_items(self, context):
 	fs = FileSystem()
 	i = 0
 	for decl in context.scene.bfg.material_decls:
-		if os.path.dirname(decl.name) == context.scene.bfg.active_material_decl_path:
-			if context.scene.bfg.hide_bad_materials and (decl.diffuse_texture == "" or not fs.find_image_file_path(decl.diffuse_texture)):
-				continue # hide materials with missing diffuse texture
+		decl_path = os.path.dirname(decl.name)
+		if decl_path == context.scene.bfg.active_material_decl_path:
+			if context.scene.bfg.hide_bad_materials and decl_path not in _editor_material_paths and (decl.diffuse_texture == "" or not fs.find_image_file_path(decl.diffuse_texture)):
+				# hide materials with missing diffuse texture, but not editor materials
+				continue
 			if decl.editor_texture in pcoll: # workaround blender bug, pcoll.load is supposed to return cached preview if name already exists
 				preview = pcoll[decl.editor_texture]
 			else:
@@ -412,24 +416,33 @@ def create_material(decl):
 		mat = bpy.data.materials[decl.name]
 	else:
 		mat = bpy.data.materials.new(decl.name)
-	mat.use_shadeless = bpy.context.scene.bfg.shadeless_materials
 	fs = FileSystem()
-	if decl.diffuse_texture != "":
-		create_material_texture(fs, mat, decl.diffuse_texture, 0)
-	if decl.normal_texture != "":
-		(tex, slot) = create_material_texture(fs, mat, decl.normal_texture, 1)
-		slot.use_map_color_diffuse = False
-		if decl.heightmap_scale > 0:
-			slot.use_map_displacement = True
-			slot.displacement_factor = decl.heightmap_scale
-		else:
-			tex.use_normal_map = True
-			slot.use_map_normal = True
-	if decl.specular_texture != "":
-		(_, slot) = create_material_texture(fs, mat, decl.specular_texture, 2)
-		slot.use_map_color_diffuse = False
-		slot.use_map_color_spec = True
-		slot.use_map_specular = True
+	decl_path = os.path.dirname(decl.name)
+	if decl_path in _editor_material_paths:
+		# editor materials: use the editor texture if diffuse is missing
+		create_material_texture(fs, mat, decl.diffuse_texture if decl.diffuse_texture != "" else decl.editor_texture, 0)
+		mat.alpha = 0.5
+		mat.transparency_method = 'Z_TRANSPARENCY'
+		mat.use_shadeless = True
+		mat.use_transparency = True
+	else:
+		mat.use_shadeless = bpy.context.scene.bfg.shadeless_materials
+		if decl.diffuse_texture != "":
+			create_material_texture(fs, mat, decl.diffuse_texture, 0)
+		if decl.normal_texture != "":
+			(tex, slot) = create_material_texture(fs, mat, decl.normal_texture, 1)
+			slot.use_map_color_diffuse = False
+			if decl.heightmap_scale > 0:
+				slot.use_map_displacement = True
+				slot.displacement_factor = decl.heightmap_scale
+			else:
+				tex.use_normal_map = True
+				slot.use_map_normal = True
+		if decl.specular_texture != "":
+			(_, slot) = create_material_texture(fs, mat, decl.specular_texture, 2)
+			slot.use_map_color_diffuse = False
+			slot.use_map_color_spec = True
+			slot.use_map_specular = True
 	return mat
 	
 def get_or_create_active_material(context):
@@ -1558,7 +1571,8 @@ def update_hide_bad_materials(self, context):
 	
 def update_shadeless_materials(self, context):
 	for mat in bpy.data.materials:
-		if mat.name != "_object_color":
+		mat_path = os.path.dirname(mat.name)
+		if mat.name != "_object_color" and mat_path not in _editor_material_paths:
 			mat.use_shadeless = context.scene.bfg.shadeless_materials
 	
 class BfgScenePropertyGroup(bpy.types.PropertyGroup):
