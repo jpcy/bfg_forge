@@ -847,10 +847,10 @@ def update_room_plane_modifier(obj):
 			mod.material_offset_rim = 2
 
 def update_room_plane_materials(obj):
-	if bpy.data.materials.find(obj.bfg.ceiling_material) != -1:
-		obj.material_slots[0].material = bpy.data.materials[obj.bfg.ceiling_material]
 	if bpy.data.materials.find(obj.bfg.floor_material) != -1:
-		obj.material_slots[1].material = bpy.data.materials[obj.bfg.floor_material]
+		obj.material_slots[0].material = bpy.data.materials[obj.bfg.floor_material]
+	if bpy.data.materials.find(obj.bfg.ceiling_material) != -1:
+		obj.material_slots[1].material = bpy.data.materials[obj.bfg.ceiling_material]
 	if bpy.data.materials.find(obj.bfg.wall_material) != -1:
 		obj.material_slots[2].material = bpy.data.materials[obj.bfg.wall_material]
 
@@ -859,11 +859,21 @@ def update_room(self, context):
 	if obj.bfg.type == '2D_ROOM':
 		update_room_plane_modifier(obj)
 		update_room_plane_materials(obj)
+		
+def flip_mesh_normals(mesh):
+	bm = bmesh.new()
+	bm.from_mesh(mesh)
+	for f in bm.faces:
+		f.normal_flip()
+	bm.to_mesh(mesh)
+	bm.free()
 
-def apply_boolean(dest, src, bool_op):
+def apply_boolean(dest, src, bool_op, flip_normals=False):
 	bpy.ops.object.select_all(action='DESELECT')
 	dest.select = True
 	me = src.to_mesh(bpy.context.scene, True, 'PREVIEW')
+	if flip_normals:
+		flip_mesh_normals(me)
 	ob_bool = bpy.data.objects.new("_bool", me)
 	
 	# copy transform
@@ -928,6 +938,7 @@ class AddRoom(bpy.types.Operator):
 		obj = context.active_object
 		obj.modifiers['Solidify'].offset = 1
 		obj.modifiers['Solidify'].use_even_offset = True
+		obj.modifiers['Solidify'].use_flip_normals = True
 		obj.modifiers['Solidify'].use_quality_normals = True
 		obj.name = "room2D"
 		obj.data.name = "room2D"
@@ -996,6 +1007,7 @@ class AddBrush(bpy.types.Operator):
 		obj.game.physics_type = 'NO_COLLISION'
 		obj.hide_render = True
 		if self.s_type == '3D_ROOM':
+			flip_object_normals(obj)
 			link_active_object_to_group("rooms")
 		else:
 			link_active_object_to_group("brushes")
@@ -1045,7 +1057,6 @@ class BuildMap(bpy.types.Operator):
 					
 		# create map object
 		# if a map object already exists, its old mesh is removed
-		# if there is at least one room, it is used as the starting point for the map mesh, otherwise an empty mesh is created
 		set_object_mode_and_clear_selection()
 		old_map_mesh = None
 		map_name = "_map"
@@ -1053,13 +1064,7 @@ class BuildMap(bpy.types.Operator):
 		if map_mesh_name in bpy.data.meshes:
 			old_map_mesh = bpy.data.meshes[map_mesh_name]
 			old_map_mesh.name = "map_old"
-		if len(room_list) > 0:
-			# first room: generate the mesh and transform to worldspace
-			map_mesh = room_list[0].to_mesh(scene, True, 'PREVIEW')
-			map_mesh.name = map_mesh_name
-			map_mesh.transform(room_list[0].matrix_world)
-		else:
-			map_mesh = bpy.data.meshes.new(map_mesh_name)
+		map_mesh = bpy.data.meshes.new(map_mesh_name)
 		if map_name in bpy.data.objects:
 			map = bpy.data.objects[map_name]
 			map.data = map_mesh
@@ -1074,9 +1079,8 @@ class BuildMap(bpy.types.Operator):
 					
 		# combine rooms
 		for i, room in enumerate(room_list):
-			if i > 0:
-				# not the first room: bool union with existing mesh
-				apply_boolean(map, room, 'UNION')
+			apply_boolean(map, room, 'UNION', flip_normals=True)
+		map.select = True
 		if len(room_list) > 0:
 			flip_object_normals(map)
 			
