@@ -428,6 +428,10 @@ def create_material(decl):
 		mat.use_shadeless = bpy.context.scene.bfg.shadeless_materials
 		if decl.diffuse_texture != "":
 			create_material_texture(fs, mat, decl.diffuse_texture, 0)
+		elif decl.texture != "": # fallback to generic texture if no diffuse
+			create_material_texture(fs, mat, decl.texture, 0)
+		elif decl.editor_texture != "": # fallback to editor texture if no diffuse or generic
+			create_material_texture(fs, mat, decl.editor_texture, 0)	
 		if decl.normal_texture != "":
 			(tex, slot) = create_material_texture(fs, mat, decl.normal_texture, 1)
 			slot.use_map_color_diffuse = False
