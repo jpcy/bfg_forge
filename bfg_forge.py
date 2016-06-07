@@ -164,6 +164,10 @@ class FileSystem:
 		return None
 		
 	def find_image_file_path(self, filename):
+		if filename == "_black":
+			filename = "textures/black"
+		elif filename == "_white":
+			filename = "guis/assets/white"
 		path = self.find_file_path(filename)
 		if not path:
 			split = os.path.splitext(filename)
