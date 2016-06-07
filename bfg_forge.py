@@ -429,6 +429,7 @@ def create_material(decl):
 		mat = bpy.data.materials.new(decl.name)
 	fs = FileSystem()
 	decl_path = os.path.dirname(decl.name)
+	mat.preview_render_type = 'CUBE'
 	if decl_path in _editor_material_paths:
 		# editor materials: use the editor texture if diffuse is missing
 		create_material_texture(fs, mat, decl.diffuse_texture if decl.diffuse_texture != "" else decl.editor_texture, 0)
