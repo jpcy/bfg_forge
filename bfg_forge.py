@@ -1046,7 +1046,7 @@ class BuildMap(bpy.types.Operator):
 		# get rooms and brushes
 		room_list = []
 		brush_list = []
-		for obj in context.visible_objects:
+		for obj in context.scene.objects:
 			if obj.bfg.type in ['2D_ROOM', '3D_ROOM']:
 				room_list.append(obj)
 			elif obj.bfg.type == 'BRUSH':
