@@ -176,13 +176,14 @@ class FileSystem:
 				path = self.find_file_path(split[0] + ".tga")
 		return path
 		
-	def for_each_file(self, pattern, callback):
+	def find_files(self, pattern):
 		# don't touch the same file more than once
 		# e.g.
 		# mymod/materials/base_wall.mtr
 		# basedev/materials/base_wall.mtr
 		# ignore the second one
 		touched_files = []
+		found_files = []
 		for search_dir in self.search_dirs:
 			full_path = os.path.join(os.path.realpath(bpy.path.abspath(bpy.context.scene.bfg.game_path)), search_dir)
 			if os.path.exists(full_path):
@@ -190,8 +191,9 @@ class FileSystem:
 					base = os.path.basename(f)
 					if not base in touched_files:
 						touched_files.append(base)
-						callback(full_path, f)
-
+						found_files.append(f)
+		return found_files
+						
 ################################################################################
 ## UTILITY FUNCTIONS
 ################################################################################
@@ -274,7 +276,7 @@ class ImportMaterials(bpy.types.Operator):
 		lex.expect_token(")")
 		return (texture, scale)
 
-	def parse_material_file(self, search_path, filename):
+	def parse_material_file(self, filename):
 		lex = Lexer(filename)
 		num_materials_created = 0
 		num_materials_updated = 0
@@ -375,17 +377,19 @@ class ImportMaterials(bpy.types.Operator):
 		if context.scene.bfg.game_path:
 			self.num_materials_created = 0
 			self.num_materials_updated = 0
-		
-			def pmf(search_path, filename):
-				result = self.parse_material_file(search_path, filename)
-				self.num_materials_created += result[0]
-				self.num_materials_updated += result[1]
-
 			start_time = time.time() 
 			fs = FileSystem()
-			fs.for_each_file(r"materials\*.mtr", pmf)
+			files = fs.find_files(r"materials\*.mtr")
+			wm = context.window_manager
+			wm.progress_begin(0, len(files))
+			for i, f in enumerate(files):
+				result = self.parse_material_file(f)
+				wm.progress_update(i)
+				self.num_materials_created += result[0]
+				self.num_materials_updated += result[1]
 			self.update_material_decl_paths(context.scene)
 			preview_collections["light"].needs_refresh = True
+			wm.progress_end()
 			self.report({'INFO'}, "Imported %d materials, updated %d in %.2f seconds" % (self.num_materials_created, self.num_materials_updated, time.time() - start_time))
 		else:
 			self.report({'ERROR'}, "RBDOOM-3-BFG path not set")
@@ -587,7 +591,7 @@ class ImportEntities(bpy.types.Operator):
 	bl_idname = "scene.import_entities"
 	bl_label = "Import Entities"
 	
-	def parse_def_file(self, scene, search_path, filename):
+	def parse_def_file(self, scene, filename):
 		lex = Lexer(filename)
 		num_entities_created = 0
 		num_entities_updated = 0
@@ -639,15 +643,17 @@ class ImportEntities(bpy.types.Operator):
 		if context.scene.bfg.game_path:
 			self.num_entities_created = 0
 			self.num_entities_updated = 0
-		
-			def pdf(search_path, filename):
-				result = self.parse_def_file(context.scene, search_path, filename)
-				self.num_entities_created += result[0]
-				self.num_entities_updated += result[1]
-
 			start_time = time.time() 
 			fs = FileSystem()
-			fs.for_each_file(r"def\*.def", pdf)
+			files = fs.find_files(r"def\*.def")
+			wm = context.window_manager
+			wm.progress_begin(0, len(files))
+			for i, f in enumerate(files):
+				result = self.parse_def_file(context.scene, f)
+				wm.progress_update(i)
+				self.num_entities_created += result[0]
+				self.num_entities_updated += result[1]
+			wm.progress_end()
 			self.report({'INFO'}, "Imported %d entities, updated %d in %.2f seconds" % (self.num_entities_created, self.num_entities_updated, time.time() - start_time))
 		else:
 			self.report({'ERROR'}, "RBDOOM-3-BFG path not set")
