@@ -671,6 +671,7 @@ def create_object_color_material():
 	mat.use_shadeless = True
 
 class AddEntity(bpy.types.Operator):
+	"""Add a new entity to the scene of the selected type"""
 	bl_idname = "scene.add_entity"
 	bl_label = "Add Entity"
 	
@@ -709,6 +710,34 @@ class AddEntity(bpy.types.Operator):
 			bpy.ops.mesh.select_all(action='SELECT')
 			bpy.ops.transform.translate(value=origin)
 			bpy.ops.object.editmode_toggle()
+		return {'FINISHED'}
+		
+class ShowEntityDescription(bpy.types.Operator):
+	"""Show entity description"""
+	bl_idname = "object.show_entity_description"
+	bl_label = "Show Entity Description"
+	bl_options = {'REGISTER','UNDO','INTERNAL'}
+
+	def draw(self, context):
+		col = self.layout.column()
+		ae = context.scene.bfg.active_entity
+		if ae:
+			ent = context.scene.bfg.entities[ae]
+			if ent.usage == "":
+				col.label("No info")
+			else:
+				#col.label(ent.usage)
+				# no support for text wrapping and multiline labels...
+				n = 50
+				for i in range(0, len(ent.usage), n):
+					col.label(ent.usage[i:i+n])
+		else:
+			col.label("No entity selected")
+
+	def invoke(self, context, event):
+		return context.window_manager.invoke_popup(self)
+
+	def execute(self, context):
 		return {'FINISHED'}
 		
 ################################################################################
@@ -1446,8 +1475,9 @@ class CreatePanel(bpy.types.Panel):
 		col = self.layout.column()
 		if len(scene.bfg.entities) > 0:
 			row = col.row(align=True)
-			row.operator(AddEntity.bl_idname, AddEntity.bl_label, icon='POSE_HLT')
-			row.prop_search(scene.bfg, "active_entity", scene.bfg, "entities", "", icon='SCRIPT')
+			row.prop_search(scene.bfg, "active_entity", scene.bfg, "entities", "", icon='POSE_HLT')
+			row.operator(ShowEntityDescription.bl_idname, "", icon='INFO')
+			row.operator(AddEntity.bl_idname, "", icon='ZOOMIN')
 		col.operator(AddLight.bl_idname, AddLight.bl_label, icon='LAMP_POINT')
 		col.operator(AddStaticModel.bl_idname, AddStaticModel.bl_label, icon='MESH_MONKEY')
 		
