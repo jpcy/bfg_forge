@@ -1453,15 +1453,16 @@ class MaterialPanel(bpy.types.Panel):
 			col.prop_search(scene.bfg, "active_material_decl_path", scene.bfg, "material_decl_paths", "", icon='MATERIAL')
 			col.template_icon_view(scene.bfg, "active_material_decl")
 			col.prop(scene.bfg, "active_material_decl", "")
-			if context.active_object and len(context.selected_objects) > 0:
-				if context.active_object.bfg.type == '2D_ROOM':
+			obj = context.active_object
+			if obj and len(context.selected_objects) > 0:
+				if obj.bfg.type == '2D_ROOM':
 					col.label("Assign:", icon='MATERIAL')
 					row = col.row(align=True)
 					row.operator(AssignMaterial.bl_idname, "Ceiling").where = 'CEILING'
 					row.operator(AssignMaterial.bl_idname, "Wall").where = 'WALL'
 					row.operator(AssignMaterial.bl_idname, "Floor").where = 'FLOOR'
 					row.operator(AssignMaterial.bl_idname, "All").where = 'ALL'
-				else:
+				elif hasattr(obj.data, "materials") or len(context.selected_objects) > 1: # don't hide if multiple selections
 					col.operator(AssignMaterial.bl_idname, AssignMaterial.bl_label, icon='MATERIAL')
 
 class ObjectPanel(bpy.types.Panel):
@@ -1509,7 +1510,7 @@ class ObjectPanel(bpy.types.Panel):
 				col.template_icon_view(obj.bfg, "light_material")
 				col.separator()
 				col.prop(obj.bfg, "light_material", "")
-			elif obj.type == 'MESH' or len(context.selected_objects) > 1: # don't hide if multiple selections
+			if hasattr(obj.data, "materials") or len(context.selected_objects) > 1: # don't hide if multiple selections
 				col.separator()
 				col.operator(RefreshMaterials.bl_idname, RefreshMaterials.bl_label, icon='MATERIAL')
 
