@@ -258,6 +258,10 @@ class ImportMaterials(bpy.types.Operator):
 		self.num_materials_created = 0
 		self.num_materials_updated = 0
 		
+	def parse_addnormals(self, decl, lex):
+		lex.expect_token("(")
+		return lex.parse_token()
+		
 	def parse_heightmap(self, decl, lex):
 		lex.expect_token("(")
 		texture = lex.parse_token()
@@ -331,14 +335,18 @@ class ImportMaterials(bpy.types.Operator):
 							stage_blend = lex.parse_token()
 						elif token.lower() == "map":
 							token = lex.parse_token()
-							if token.lower() == "heightmap":
+							if token.lower() == "addnormals":
+								stage_texture = self.parse_addnormals(decl, lex)
+							elif token.lower() == "heightmap":
 								(stage_texture, stage_heightmap_scale) = self.parse_heightmap(decl, lex)
 							else:
 								stage_texture = token
 					else:
 						if token.lower() == "bumpmap":
 							token = lex.parse_token()
-							if token.lower() == "heightmap":
+							if token.lower() == "addnormals":
+								decl.normal_texture = self.parse_addnormals(decl, lex)
+							elif token.lower() == "heightmap":
 								(decl.normal_texture, decl.heightmap_scale) = self.parse_heightmap(decl, lex)
 							else:
 								decl.normal_texture = token
