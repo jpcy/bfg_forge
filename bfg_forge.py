@@ -390,7 +390,6 @@ def create_material_texture(fs, mat, texture, slot_number):
 	img_filename = fs.find_image_file_path(texture)
 	if img_filename:
 		# try to use relative paths for image filenames
-		print(img_filename)
 		try:
 			img_filename = bpy.path.relpath(img_filename)
 		except ValueError:
@@ -485,12 +484,12 @@ class AssignMaterial(bpy.types.Operator):
 	
 	def execute(self, context):
 		obj = context.active_object
-		if not obj or not hasattr(obj.data, "materials"):
+		if not obj:
 			return {'FINISHED'}
 		mat = get_or_create_active_material(context)
 		if not mat:
 			return {'FINISHED'}
-		if obj.mode == 'EDIT':
+		if obj.mode == 'EDIT' and hasattr(obj.data, "materials"):
 			# edit mode: assign to selected mesh faces
 			bm = bmesh.from_edit_mesh(obj.data)
 			selected_faces = [f for f in bm.faces if f.select]
@@ -537,22 +536,23 @@ class AssignMaterial(bpy.types.Operator):
 					self.assign_to_object(s, mat)
 		return {'FINISHED'}
 		
-def refresh_object_materials(context, obj):
-	if hasattr(obj.data, "materials"):
-		for mat in obj.data.materials:
-			if mat.name in context.scene.bfg.material_decls:
-				decl = context.scene.bfg.material_decls[mat.name]
-				create_material(decl)
+def refresh_selected_objects_materials(context):
+	refreshed = [] # don't refresh the same material twice
+	for obj in context.selected_objects:
+		if hasattr(obj.data, "materials"):
+			for mat in obj.data.materials:
+				if mat not in refreshed and mat.name in context.scene.bfg.material_decls:
+					decl = context.scene.bfg.material_decls[mat.name]
+					create_material(decl)
+					refreshed.append(mat)
 		
 class RefreshMaterials(bpy.types.Operator):
-	"""Refresh the active object's materials, recreating them from their corresponding material decls"""
+	"""Refresh the select objects' materials, recreating them from their corresponding material decls"""
 	bl_idname = "scene.refresh_materials"
 	bl_label = "Refresh Materials"
 	
 	def execute(self, context):
-		obj = context.active_object
-		if obj:
-			refresh_object_materials(context, obj)
+		refresh_selected_objects_materials(context)
 		return {'FINISHED'}
 		
 ################################################################################
@@ -1437,7 +1437,7 @@ class MaterialPanel(bpy.types.Panel):
 			col.prop_search(scene.bfg, "active_material_decl_path", scene.bfg, "material_decl_paths", "", icon='MATERIAL')
 			col.template_icon_view(scene.bfg, "active_material_decl")
 			col.prop(scene.bfg, "active_material_decl", "")
-			if context.active_object and len(context.selected_objects) > 0 and hasattr(context.active_object.data, "materials"):
+			if context.active_object and len(context.selected_objects) > 0:
 				if context.active_object.bfg.type == '2D_ROOM':
 					col.label("Assign:", icon='MATERIAL')
 					row = col.row(align=True)
@@ -1493,7 +1493,7 @@ class ObjectPanel(bpy.types.Panel):
 				col.template_icon_view(obj.bfg, "light_material")
 				col.separator()
 				col.prop(obj.bfg, "light_material", "")
-			elif obj.type == 'MESH':
+			elif obj.type == 'MESH' or len(context.selected_objects) > 1: # don't hide if multiple selections
 				col.separator()
 				col.operator(RefreshMaterials.bl_idname, RefreshMaterials.bl_label, icon='MATERIAL')
 
