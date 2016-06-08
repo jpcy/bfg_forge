@@ -579,13 +579,20 @@ class RefreshMaterials(bpy.types.Operator):
 ################################################################################
 ## ENTITIES
 ################################################################################
-		
+
+class EntityDictPropGroup(bpy.types.PropertyGroup):
+	# name property inherited
+	value = bpy.props.StringProperty()
+
 class EntityPropGroup(bpy.types.PropertyGroup):
 	# name property inherited
-	color = bpy.props.StringProperty()
-	usage = bpy.props.StringProperty()
-	mins = bpy.props.StringProperty()
-	maxs = bpy.props.StringProperty()
+	dict = bpy.props.CollectionProperty(type=EntityDictPropGroup)
+	
+	def get_dict_value(self, key, key_default):
+		kvp = self.dict.get(key)
+		if kvp:
+			return kvp.value
+		return key_default
 
 class ImportEntities(bpy.types.Operator):
 	bl_idname = "scene.import_entities"
@@ -612,10 +619,6 @@ class ImportEntities(bpy.types.Operator):
 					entity = scene.bfg.entities.add()
 					entity.name = name
 					num_entities_created += 1
-				entity.color = "0 0 1" # "r g b"
-				entity.mins = ""
-				entity.maxs = ""
-				entity.usage = ""
 				lex.expect_token("{")
 				num_required_closing = 1
 				while True:
@@ -628,14 +631,15 @@ class ImportEntities(bpy.types.Operator):
 						num_required_closing -= 1
 						if num_required_closing == 0:
 							break
-					elif token == "editor_color":
-						entity.color = lex.parse_token()
-					elif token == "editor_mins":
-						entity.mins = lex.parse_token()
-					elif token == "editor_maxs":
-						entity.maxs = lex.parse_token()
-					elif token == "editor_usage":
-						entity.usage = lex.parse_token()
+					else:
+						# parse as key-value pair
+						key = token
+						if key in entity.dict:
+							kvp = entity.dict[key]
+						else:
+							kvp = entity.dict.add()
+							kvp.name = key
+						kvp.value = lex.parse_token()
 		print(" %d entities" % (num_entities_created + num_entities_updated))
 		return (num_entities_created, num_entities_updated)
 	
@@ -686,12 +690,14 @@ class AddEntity(bpy.types.Operator):
 			obj.bfg.type = 'ENTITY'
 			obj.bfg.classname = ae
 			obj.name = ae
-			obj.color = [float(i) for i in entity.color.split()] + [float(0.5)] # "r g b"
+			entity_color = entity.get_dict_value("editor_color", "0 0 1") # default to blue
+			obj.color = [float(i) for i in entity_color.split()] + [float(0.5)] # "r g b"
 			obj.data.name = ae
 			obj.data.materials.append(bpy.data.materials["_object_color"])
 			obj.lock_rotation = [True, True, False]
 			obj.lock_scale = [True, True, True]
 			obj.show_axis = True # x will be forward
+			obj.show_name = context.scene.bfg.show_entity_names
 			obj.show_wire = True
 			obj.show_transparent = True
 			context.scene.objects.active = obj
@@ -699,8 +705,10 @@ class AddEntity(bpy.types.Operator):
 			context.object.hide_render = True
 
 			# set entity dimensions
-			mins = Vector([float(i) * _scale_to_blender for i in entity.mins.split()])
-			maxs = Vector([float(i) * _scale_to_blender for i in entity.maxs.split()])
+			entity_mins = entity.get_dict_value("editor_mins", "-16 -16 -16")
+			entity_maxs = entity.get_dict_value("editor_maxs", "16 16 16")
+			mins = Vector([float(i) * _scale_to_blender for i in entity_mins.split()])
+			maxs = Vector([float(i) * _scale_to_blender for i in entity_maxs.split()])
 			size = maxs + -mins
 			obj.dimensions = size
 			
@@ -723,14 +731,12 @@ class ShowEntityDescription(bpy.types.Operator):
 		ae = context.scene.bfg.active_entity
 		if ae:
 			ent = context.scene.bfg.entities[ae]
-			if ent.usage == "":
-				col.label("No info")
-			else:
-				#col.label(ent.usage)
-				# no support for text wrapping and multiline labels...
-				n = 50
-				for i in range(0, len(ent.usage), n):
-					col.label(ent.usage[i:i+n])
+			ent_usage = ent.get_dict_value("editor_usage", "No info")
+			#col.label(ent_usage)
+			# no support for text wrapping and multiline labels...
+			n = 50
+			for i in range(0, len(ent_usage), n):
+				col.label(ent_usage[i:i+n])
 		else:
 			col.label("No entity selected")
 
