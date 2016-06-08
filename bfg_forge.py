@@ -631,7 +631,7 @@ class ImportEntities(bpy.types.Operator):
 						num_required_closing -= 1
 						if num_required_closing == 0:
 							break
-					else:
+					elif token.startswith("editor_"): # only care about the editor kvps
 						# parse as key-value pair
 						key = token
 						if key in entity.dict:
@@ -718,6 +718,13 @@ class AddEntity(bpy.types.Operator):
 			bpy.ops.mesh.select_all(action='SELECT')
 			bpy.ops.transform.translate(value=origin)
 			bpy.ops.object.editmode_toggle()
+			
+			# create properties
+			for kvp in entity.dict:
+				if kvp.name.startswith("editor_var"):
+					var = kvp.name.split(" ")[1]
+					bpy.ops.object.game_property_new(type='STRING', name=var)
+				
 		return {'FINISHED'}
 		
 class ShowEntityDescription(bpy.types.Operator):
@@ -739,6 +746,31 @@ class ShowEntityDescription(bpy.types.Operator):
 				col.label(ent_usage[i:i+n])
 		else:
 			col.label("No entity selected")
+
+	def invoke(self, context, event):
+		return context.window_manager.invoke_popup(self)
+
+	def execute(self, context):
+		return {'FINISHED'}
+		
+class ShowEntityPropertyDescription(bpy.types.Operator):
+	"""Show entity property description"""
+	bl_idname = "object.show_entity_property_description"
+	bl_label = "Show Entity Property Description"
+	bl_options = {'REGISTER','UNDO','INTERNAL'}
+	name = bpy.props.StringProperty(default="")
+
+	def draw(self, context):
+		col = self.layout.column()
+		obj = context.active_object
+		if obj.bfg.type == 'ENTITY' and self.name != "":
+			ent = context.scene.bfg.entities[obj.bfg.classname]
+			info = ent.get_dict_value("editor_var " + self.name, "No info")
+			#col.label(info)
+			# no support for text wrapping and multiline labels...
+			n = 50
+			for i in range(0, len(info), n):
+				col.label(info[i:i+n])
 
 	def invoke(self, context, event):
 		return context.window_manager.invoke_popup(self)
@@ -1412,6 +1444,9 @@ class ExportMap(bpy.types.Operator, ExportHelper):
 					if obj.bfg.type == 'ENTITY':
 						if obj.rotation_euler.z != 0.0:
 							ent["angle"] = ftos(math.degrees(obj.rotation_euler.z))
+						for prop in obj.game.properties:
+							if prop.value != "":
+								ent[prop.name] = prop.value
 					elif obj.bfg.type == 'STATIC_MODEL':
 						ent["model"] = obj.bfg.entity_model.replace("\\", "/")
 						angles = obj.rotation_euler
@@ -1547,6 +1582,14 @@ class ObjectPanel(bpy.types.Panel):
 					row.operator(CopyRoom.bl_idname, "Wall").copy_op = 'MATERIAL_WALL'
 					row.operator(CopyRoom.bl_idname, "Floor").copy_op = 'MATERIAL_FLOOR'
 					row.operator(CopyRoom.bl_idname, "All").copy_op = 'MATERIAL_ALL'
+			elif obj.bfg.type == 'ENTITY':
+				col.separator()
+				for prop in obj.game.properties:
+					box = col.box()
+					row = box.row()
+					row.label(prop.name + ":")
+					row.prop(prop, "value", text="")
+					row.operator(ShowEntityPropertyDescription.bl_idname, "", icon='INFO').name = prop.name
 			elif obj.type == 'LAMP':
 				col.separator()
 				sub = col.row()

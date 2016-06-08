@@ -17,7 +17,7 @@ DONE:
 * Basic material decl and entity def parsing
 * Selectable material decl with preview image and icons
 * Create material from decl
-* Create entities - partially done
+* Create entities, set properties - partially done
 * Create lights, set properties - partially done
 * Create static models / func_static - partially done
 * Use Level Buddy for quickly building a mesh - similar to subtractive and additive brushes
@@ -26,6 +26,5 @@ DONE:
 
 TODO:
 * Cycles materials
-* Entity properties
 * Per-object/face auto UV unwrap options - try to work similar to Radiant
 * Much more...
