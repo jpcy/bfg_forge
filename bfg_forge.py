@@ -685,46 +685,51 @@ class AddEntity(bpy.types.Operator):
 			entity = context.scene.bfg.entities[ae]
 			create_object_color_material()
 			set_object_mode_and_clear_selection()
-			bpy.ops.mesh.primitive_cube_add()
-			obj = context.active_object
+			entity_mins = entity.get_dict_value("editor_mins", "?")
+			entity_maxs = entity.get_dict_value("editor_maxs", "?")
+			if entity_mins == "?" or entity_maxs == "?":
+				# create as empty
+				bpy.ops.object.empty_add(type='SPHERE')
+				obj = context.active_object
+				obj.empty_draw_size = 0.5
+			else:
+				# create as mesh
+				bpy.ops.mesh.primitive_cube_add()
+				obj = context.active_object
+				entity_color = entity.get_dict_value("editor_color", "0 0 1") # default to blue
+				obj.color = [float(i) for i in entity_color.split()] + [float(0.5)] # "r g b"
+				obj.data.name = ae
+				obj.data.materials.append(bpy.data.materials["_object_color"])
+				obj.lock_rotation = [True, True, False]
+				obj.lock_scale = [True, True, True]
+				obj.show_axis = True # x will be forward
+				obj.show_name = context.scene.bfg.show_entity_names
+				obj.show_wire = True
+				obj.show_transparent = True
+			
+				# set dimensions
+				mins = Vector([float(i) * _scale_to_blender for i in entity_mins.split()])
+				maxs = Vector([float(i) * _scale_to_blender for i in entity_maxs.split()])
+				size = maxs + -mins
+				obj.dimensions = size
+				
+				# set origin
+				origin = (mins + maxs) / 2.0
+				bpy.ops.object.editmode_toggle()
+				bpy.ops.mesh.select_all(action='SELECT')
+				bpy.ops.transform.translate(value=origin)
+				bpy.ops.object.editmode_toggle()
 			obj.bfg.type = 'ENTITY'
 			obj.bfg.classname = ae
 			obj.name = ae
-			entity_color = entity.get_dict_value("editor_color", "0 0 1") # default to blue
-			obj.color = [float(i) for i in entity_color.split()] + [float(0.5)] # "r g b"
-			obj.data.name = ae
-			obj.data.materials.append(bpy.data.materials["_object_color"])
-			obj.lock_rotation = [True, True, False]
-			obj.lock_scale = [True, True, True]
-			obj.show_axis = True # x will be forward
-			obj.show_name = context.scene.bfg.show_entity_names
-			obj.show_wire = True
-			obj.show_transparent = True
-			context.scene.objects.active = obj
+			obj.hide_render = True			
 			link_active_object_to_group("entities")
-			context.object.hide_render = True
-
-			# set entity dimensions
-			entity_mins = entity.get_dict_value("editor_mins", "-16 -16 -16")
-			entity_maxs = entity.get_dict_value("editor_maxs", "16 16 16")
-			mins = Vector([float(i) * _scale_to_blender for i in entity_mins.split()])
-			maxs = Vector([float(i) * _scale_to_blender for i in entity_maxs.split()])
-			size = maxs + -mins
-			obj.dimensions = size
-			
-			# set entity origin
-			origin = (mins + maxs) / 2.0
-			bpy.ops.object.editmode_toggle()
-			bpy.ops.mesh.select_all(action='SELECT')
-			bpy.ops.transform.translate(value=origin)
-			bpy.ops.object.editmode_toggle()
 			
 			# create properties
 			for kvp in entity.dict:
 				if kvp.name.startswith("editor_var"):
 					var = kvp.name.split(" ")[1]
 					bpy.ops.object.game_property_new(type='STRING', name=var)
-				
 		return {'FINISHED'}
 		
 class ShowEntityDescription(bpy.types.Operator):
