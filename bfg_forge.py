@@ -618,6 +618,18 @@ def create_model_object(context, filename, relative_path):
 		if not imported_obj:
 			return (None, "Importing \"%s\" failed" % filename) # import must have failed
 		obj = imported_obj
+		# fixup material names by removing filename extensions.
+		# e.g. "models/items/rocket_ammo/rocket_large.tga" should be "models/items/rocket_ammo/rocket_large"
+		for i, mat in enumerate(obj.data.materials):
+			(name, ext) = os.path.splitext(mat.name)
+			if ext != "":
+				# if a material with the fixed name already exists, use it
+				# otherwise rename this one
+				new_mat = bpy.data.materials.get(name)
+				if new_mat:
+					obj.data.materials[i] = new_mat
+				else:
+					mat.name = name
 	context.scene.objects.active = obj
 	obj.select = True
 	obj.bfg.entity_model = relative_path
