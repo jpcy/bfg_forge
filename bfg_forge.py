@@ -588,7 +588,7 @@ class EntityPropGroup(bpy.types.PropertyGroup):
 	# name property inherited
 	dict = bpy.props.CollectionProperty(type=EntityDictPropGroup)
 	
-	def get_dict_value(self, key, key_default):
+	def get_dict_value(self, key, key_default=None):
 		kvp = self.dict.get(key)
 		if kvp:
 			return kvp.value
@@ -737,20 +737,25 @@ class ShowEntityDescription(bpy.types.Operator):
 	bl_idname = "object.show_entity_description"
 	bl_label = "Show Entity Description"
 	bl_options = {'REGISTER','UNDO','INTERNAL'}
-
+	
 	def draw(self, context):
+		bfg = context.scene.bfg
+		ent = bfg.entities[bfg.active_entity]
+		ent_usage = ent.get_dict_value("editor_usage")
 		col = self.layout.column()
+		#col.label(ent_usage)
+		# no support for text wrapping and multiline labels...
+		n = 50
+		for i in range(0, len(ent_usage), n):
+			col.label(ent_usage[i:i+n])
+				
+	@classmethod
+	def poll(cls, context):
 		ae = context.scene.bfg.active_entity
 		if ae:
 			ent = context.scene.bfg.entities[ae]
-			ent_usage = ent.get_dict_value("editor_usage", "No info")
-			#col.label(ent_usage)
-			# no support for text wrapping and multiline labels...
-			n = 50
-			for i in range(0, len(ent_usage), n):
-				col.label(ent_usage[i:i+n])
-		else:
-			col.label("No entity selected")
+			return ent.dict.get("editor_usage") != None
+		return False
 
 	def invoke(self, context, event):
 		return context.window_manager.invoke_popup(self)
