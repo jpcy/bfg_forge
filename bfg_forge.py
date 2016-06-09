@@ -577,6 +577,56 @@ class RefreshMaterials(bpy.types.Operator):
 		return {'FINISHED'}
 		
 ################################################################################
+## MODELS
+################################################################################
+
+# creates a new object with the specified model either loaded into a new mesh, or linked to an existing mesh
+# the object will be made active and selected
+# return (object, error_message)
+def create_model_object(context, filename, relative_path):
+	# check that the required import addon is enabled
+	extension = os.path.splitext(filename)[1]
+	if extension.lower() == ".lwo":
+		if not hasattr(bpy.types, "IMPORT_SCENE_OT_lwo"):
+			return (None, "LightWave Object (.lwo) import addon not enabled")
+	else:
+		return (None, "Model \"%s\" uses unsupported extension \"%s\"" % (filename, extension))
+	
+	set_object_mode_and_clear_selection()
+	
+	# if the model has already been loaded before, don't import - link to the existing mesh
+	mesh = None
+	for obj in context.scene.objects:
+		if obj.bfg.entity_model == relative_path:
+			mesh = obj.data
+			break
+	if mesh:
+		obj = bpy.data.objects.new(os.path.splitext(os.path.basename(relative_path))[0], mesh)
+		context.scene.objects.link(obj)
+	else:
+		# lwo importer doesn't select or make active the object in creates...
+		# need to diff scene objects before and after import to find it
+		obj_names = []
+		for obj in context.scene.objects:
+			obj_names.append(obj.name)
+		bpy.ops.import_scene.lwo(filepath=filename, USE_EXISTING_MATERIALS=True)
+		imported_obj = None
+		for obj in context.scene.objects:
+			if not obj.name in obj_names:
+				imported_obj = obj
+				break
+		if not imported_obj:
+			return (None, "Importing \"%s\" failed" % filename) # import must have failed
+		obj = imported_obj
+	context.scene.objects.active = obj
+	obj.select = True
+	obj.bfg.entity_model = relative_path
+	obj.scale = [_scale_to_blender, _scale_to_blender, _scale_to_blender]
+	obj.lock_scale = [True, True, True]
+	refresh_selected_objects_materials(context)
+	return (obj, None)
+		
+################################################################################
 ## ENTITIES
 ################################################################################
 
@@ -631,7 +681,7 @@ class ImportEntities(bpy.types.Operator):
 						num_required_closing -= 1
 						if num_required_closing == 0:
 							break
-					elif token.startswith("editor_"): # only care about the editor kvps
+					elif token.startswith("editor_") or token == "model": # only care about the editor and model kvps
 						# parse as key-value pair
 						key = token
 						if key in entity.dict:
@@ -682,9 +732,8 @@ class AddEntity(bpy.types.Operator):
 	def execute(self, context):
 		ae = context.scene.bfg.active_entity
 		if ae != None and ae != "":
-			entity = context.scene.bfg.entities[ae]
-			create_object_color_material()
 			set_object_mode_and_clear_selection()
+			entity = context.scene.bfg.entities[ae]
 			entity_mins = entity.get_dict_value("editor_mins", "?")
 			entity_maxs = entity.get_dict_value("editor_maxs", "?")
 			if entity_mins == "?" or entity_maxs == "?":
@@ -692,37 +741,48 @@ class AddEntity(bpy.types.Operator):
 				bpy.ops.object.empty_add(type='SPHERE')
 				obj = context.active_object
 				obj.empty_draw_size = 0.5
+				obj.hide_render = True
 			else:
 				# create as mesh
-				bpy.ops.mesh.primitive_cube_add()
-				obj = context.active_object
-				entity_color = entity.get_dict_value("editor_color", "0 0 1") # default to blue
-				obj.color = [float(i) for i in entity_color.split()] + [float(0.5)] # "r g b"
-				obj.data.name = ae
-				obj.data.materials.append(bpy.data.materials["_object_color"])
+				model = entity.get_dict_value("model")
+				obj = None
+				if model:
+					fs = FileSystem()
+					filename = fs.find_file_path(model)
+					(obj, error_message) = create_model_object(context, filename, model)
+					if error_message:
+						self.report({'ERROR'}, error_message)
+				if not obj: # no model or create_model_object error: fallback to primitive
+					bpy.ops.mesh.primitive_cube_add()
+					obj = context.active_object
+					entity_color = entity.get_dict_value("editor_color", "0 0 1") # default to blue
+					obj.color = [float(i) for i in entity_color.split()] + [float(0.5)] # "r g b"
+					obj.data.name = ae
+					create_object_color_material()
+					obj.data.materials.append(bpy.data.materials["_object_color"])
+					obj.hide_render = True
+					obj.show_wire = True
+					obj.show_transparent = True
+					
+					# set dimensions
+					mins = Vector([float(i) * _scale_to_blender for i in entity_mins.split()])
+					maxs = Vector([float(i) * _scale_to_blender for i in entity_maxs.split()])
+					size = maxs + -mins
+					obj.dimensions = size
+					
+					# set origin
+					origin = (mins + maxs) / 2.0
+					bpy.ops.object.editmode_toggle()
+					bpy.ops.mesh.select_all(action='SELECT')
+					bpy.ops.transform.translate(value=origin)
+					bpy.ops.object.editmode_toggle()
 				obj.lock_rotation = [True, True, False]
 				obj.lock_scale = [True, True, True]
 				obj.show_axis = True # x will be forward
 				obj.show_name = context.scene.bfg.show_entity_names
-				obj.show_wire = True
-				obj.show_transparent = True
-			
-				# set dimensions
-				mins = Vector([float(i) * _scale_to_blender for i in entity_mins.split()])
-				maxs = Vector([float(i) * _scale_to_blender for i in entity_maxs.split()])
-				size = maxs + -mins
-				obj.dimensions = size
-				
-				# set origin
-				origin = (mins + maxs) / 2.0
-				bpy.ops.object.editmode_toggle()
-				bpy.ops.mesh.select_all(action='SELECT')
-				bpy.ops.transform.translate(value=origin)
-				bpy.ops.object.editmode_toggle()
 			obj.bfg.type = 'ENTITY'
 			obj.bfg.classname = ae
 			obj.name = ae
-			obj.hide_render = True			
 			link_active_object_to_group("entities")
 			
 			# create properties
@@ -858,60 +918,21 @@ class AddStaticModel(bpy.types.Operator):
 	filter_glob = bpy.props.StringProperty(default="*.lwo", options={'HIDDEN'})
 	
 	def execute(self, context):
-		# the func_static entity model value looks like this:
+		# the func_static entity model value looks like this
 		# "models/mapobjects/arcade_machine/arcade_machine.lwo"
 		# so the file path must descend from one of the search paths
 		fs = FileSystem()
 		relative_path = fs.calculate_relative_path(self.properties.filepath)
 		if not relative_path:
-			self.report({'ERROR'}, "File path must descend from \"%s\"" % context.scene.bfg.game_path)
+			self.report({'ERROR'}, "File \"%s\" not found. Path must descend from \"%s\"" % (self.properties.filepath, context.scene.bfg.game_path))
 			return {'FINISHED'}
-				
-		# check that the required import addon is enabled
-		extension = os.path.splitext(self.properties.filepath)[1]
-		if extension.lower() == ".lwo":
-			if not hasattr(bpy.types, "IMPORT_SCENE_OT_lwo"):
-				self.report({'ERROR'}, "LightWave Object (.lwo) import addon not enabled")
-				return {'FINISHED'}
+		(obj, error_message) = create_model_object(context, self.properties.filepath, relative_path)
+		if error_message:
+			self.report({'ERROR'}, error_message)
 		else:
-			self.report({'ERROR'}, "Unsupported extension \"%s\"" % extension)
-			return {'FINISHED'}
-		
-		set_object_mode_and_clear_selection()
-		
-		# if the model has already been loaded before, don't import - link to the existing mesh
-		mesh = None
-		for obj in context.scene.objects:
-			if obj.bfg.type == 'STATIC_MODEL' and obj.bfg.entity_model == relative_path:
-				mesh = obj.data
-				break
-		if mesh:
-			obj = bpy.data.objects.new(os.path.splitext(os.path.basename(relative_path))[0], mesh)
-			context.scene.objects.link(obj)
-		else:
-			# lwo importer doesn't select or make active the object in creates...
-			# need to diff scene objects before and after import to find it
-			obj_names = []
-			for obj in context.scene.objects:
-				obj_names.append(obj.name)
-			bpy.ops.import_scene.lwo(filepath=self.properties.filepath, USE_EXISTING_MATERIALS=True)
-			imported_obj = None
-			for obj in context.scene.objects:
-				if not obj.name in obj_names:
-					imported_obj = obj
-					break
-			if not imported_obj:
-				return {'FINISHED'} # import must have failed
-			obj = imported_obj
-		context.scene.objects.active = obj
-		obj.select = True
-		obj.bfg.type = 'STATIC_MODEL'
-		obj.bfg.classname = "func_static"
-		obj.bfg.entity_model = relative_path
-		obj.scale = [_scale_to_blender, _scale_to_blender, _scale_to_blender]
-		obj.lock_scale = [True, True, True]
-		link_active_object_to_group("static models")
-		refresh_object_materials(context, obj)
+			obj.bfg.type = 'STATIC_MODEL'
+			obj.bfg.classname = "func_static"
+			link_active_object_to_group("static models")
 		return {'FINISHED'}
 
 	def invoke(self, context, event):
