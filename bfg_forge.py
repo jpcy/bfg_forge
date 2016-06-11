@@ -698,7 +698,7 @@ class ImportEntities(bpy.types.Operator):
 						num_required_closing -= 1
 						if num_required_closing == 0:
 							break
-					elif token.startswith("editor_") or token == "model": # only care about the editor and model kvps
+					elif token.startswith("editor_") or token in ["inherit", "model"]: # only store what we care about
 						# parse as key-value pair
 						key = token
 						if key in entity.dict:
@@ -741,6 +741,18 @@ def create_object_color_material():
 	mat.use_fake_user = True
 	mat.use_object_color = True
 	mat.use_shadeless = True
+	
+def create_object_entity_properties(context, entity, is_inherited=False):
+	for kvp in entity.dict:
+		if kvp.name.startswith("editor_var"):
+			prop_name = kvp.name.split()[1]
+			# prepend "inherited_" to inherited property names
+			prop_name = "inherited_" + prop_name
+			bpy.ops.object.game_property_new(type='STRING', name=prop_name)
+	inherit = entity.dict.get("inherit")
+	if inherit:
+		parent_entity = context.scene.bfg.entities[inherit.value]
+		create_object_entity_properties(context, parent_entity, True)
 
 class AddEntity(bpy.types.Operator):
 	"""Add a new entity to the scene of the selected type"""
@@ -807,12 +819,7 @@ class AddEntity(bpy.types.Operator):
 			obj.bfg.classname = ae
 			obj.name = ae
 			link_active_object_to_group("entities")
-			
-			# create properties
-			for kvp in entity.dict:
-				if kvp.name.startswith("editor_var"):
-					var = kvp.name.split(" ")[1]
-					bpy.ops.object.game_property_new(type='STRING', name=var)
+			create_object_entity_properties(context, entity)
 		return {'FINISHED'}
 		
 class ShowEntityDescription(bpy.types.Operator):
@@ -852,13 +859,30 @@ class ShowEntityPropertyDescription(bpy.types.Operator):
 	bl_label = "Show Entity Property Description"
 	bl_options = {'REGISTER','UNDO','INTERNAL'}
 	name = bpy.props.StringProperty(default="")
+	
+	def find_prop_info(self, context, entity):
+		print(entity.name)
+		info = entity.get_dict_value("editor_var " + self.name)
+		if info:
+			print("info:", info)
+			return info
+		inherit = entity.dict.get("inherit")
+		if inherit:
+			print("inherit:", inherit)
+			parent_entity = context.scene.bfg.entities[inherit.value]
+			return self.find_prop_info(context, parent_entity)
+		print("default")
+		return None
 
 	def draw(self, context):
 		col = self.layout.column()
 		obj = context.active_object
 		if obj.bfg.type == 'ENTITY' and self.name != "":
-			ent = context.scene.bfg.entities[obj.bfg.classname]
-			info = ent.get_dict_value("editor_var " + self.name, "No info")
+			entity = context.scene.bfg.entities[obj.bfg.classname]
+			print("finding:", self.name)
+			info = self.find_prop_info(context, entity)
+			if not info:
+				info = "No info"
 			#col.label(info)
 			# no support for text wrapping and multiline labels...
 			n = 50
@@ -1504,7 +1528,10 @@ class ExportMap(bpy.types.Operator, ExportHelper):
 							ent["angle"] = ftos(math.degrees(obj.rotation_euler.z))
 						for prop in obj.game.properties:
 							if prop.value != "":
-								ent[prop.name] = prop.value
+								if prop.name.startswith("inherited_"): # remove the "inherited_" prefix
+									ent[prop.name[len("inherited_"):]] = prop.value
+								else:
+									ent[prop.name] = prop.value
 					elif obj.bfg.type == 'STATIC_MODEL':
 						ent["model"] = obj.bfg.entity_model.replace("\\", "/")
 						angles = obj.rotation_euler
@@ -1642,11 +1669,18 @@ class ObjectPanel(bpy.types.Panel):
 					row.operator(CopyRoom.bl_idname, "All").copy_op = 'MATERIAL_ALL'
 			elif obj.bfg.type == 'ENTITY':
 				col.separator()
+				col.prop(context.scene.bfg, "show_inherited_entity_props")
 				for prop in obj.game.properties:
+					is_inherited = prop.name.startswith("inherited_")
+					if not context.scene.bfg.show_inherited_entity_props and is_inherited:
+						continue # user doesn't want to see inherited props
 					row = col.row(align=True)
-					row.label(prop.name + ":")
+					name = prop.name
+					if is_inherited:
+						name = name[len("inherited_"):] # remove the prefix
+					row.label(name + ":")
 					row.prop(prop, "value", text="")
-					row.operator(ShowEntityPropertyDescription.bl_idname, "", icon='INFO').name = prop.name
+					row.operator(ShowEntityPropertyDescription.bl_idname, "", icon='INFO').name = name
 			elif obj.type == 'LAMP':
 				col.separator()
 				sub = col.row()
@@ -1747,6 +1781,7 @@ class BfgScenePropertyGroup(bpy.types.PropertyGroup):
 	show_entity_names = bpy.props.BoolProperty(name="Show entity names", default=False, update=update_show_entity_names)
 	hide_bad_materials = bpy.props.BoolProperty(name="Hide bad materials", description="Hide materials with missing diffuse textures", default=True, update=update_hide_bad_materials)
 	shadeless_materials = bpy.props.BoolProperty(name="Fullbright materials", description="Disable lighting on materials", default=True, update=update_shadeless_materials)
+	show_inherited_entity_props = bpy.props.BoolProperty(name="Show inherited properties", description="Show inherited entity properties", default=False)
 	map_layer = bpy.props.IntProperty(name="Layer", default=0, min=0, max=19)
 	material_decl_paths = bpy.props.CollectionProperty(type=MaterialDeclPathPropGroup)
 	active_material_decl_path = bpy.props.StringProperty(name="", default="")
