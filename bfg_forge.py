@@ -1643,8 +1643,7 @@ class ObjectPanel(bpy.types.Panel):
 			elif obj.bfg.type == 'ENTITY':
 				col.separator()
 				for prop in obj.game.properties:
-					box = col.box()
-					row = box.row()
+					row = col.row(align=True)
 					row.label(prop.name + ":")
 					row.prop(prop, "value", text="")
 					row.operator(ShowEntityPropertyDescription.bl_idname, "", icon='INFO').name = prop.name
