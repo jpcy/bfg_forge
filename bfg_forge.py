@@ -201,6 +201,9 @@ class FileSystem:
 def ftos(a):
 	return ("%f" % a).rstrip('0').rstrip('.')
 	
+def tuple_to_float_string(t):
+	return "%s %s %s" % (ftos(t[0]), ftos(t[1]), ftos(t[2]))
+	
 def set_object_mode_and_clear_selection():
 	if bpy.context.active_object:
 		bpy.ops.object.mode_set(mode='OBJECT')
@@ -1517,12 +1520,12 @@ class ExportMap(bpy.types.Operator, ExportHelper):
 			
 			# write the rest of the entities
 			for obj in context.scene.objects:
-				if obj.bfg.type == 'ENTITY' or obj.bfg.type == 'STATIC_MODEL' or obj.type == 'LAMP':
+				if obj.bfg.type in ['ENTITY', 'STATIC_MODEL'] or obj.type == 'LAMP':
 					ent = OrderedDict()
 					ent["entity"] = entity_index
 					ent["classname"] = "light" if obj.type == 'LAMP' else obj.bfg.classname
 					ent["name"] = obj.name
-					ent["origin"] = "%s %s %s" % (ftos(obj.location[0] * _scale_to_game), ftos(obj.location[1] * _scale_to_game), ftos(obj.location[2] * _scale_to_game))
+					ent["origin"] = tuple_to_float_string(obj.location * _scale_to_game)
 					if obj.bfg.type == 'ENTITY':
 						if obj.rotation_euler.z != 0.0:
 							ent["angle"] = ftos(math.degrees(obj.rotation_euler.z))
@@ -1536,16 +1539,12 @@ class ExportMap(bpy.types.Operator, ExportHelper):
 						ent["model"] = obj.bfg.entity_model.replace("\\", "/")
 						angles = obj.rotation_euler
 						rot = Euler((-angles[0], -angles[1], -angles[2]), 'XYZ').to_matrix()
-						ent["rotation"] = "%s %s %s %s %s %s %s %s %s" % (
-							ftos(rot[0][0]), ftos(rot[0][1]), ftos(rot[0][2]),
-							ftos(rot[1][0]), ftos(rot[1][1]), ftos(rot[1][2]),
-							ftos(rot[2][0]), ftos(rot[2][1]), ftos(rot[2][2])
-						)
+						ent["rotation"] = "%s %s %s" % (tuple_to_float_string(rot[0]), tuple_to_float_string(rot[1]), tuple_to_float_string(rot[2]))
 					elif obj.type == 'LAMP':
 						ent["light_center"] = "0 0 0"
 						radius = ftos(obj.data.distance * _scale_to_game)
 						ent["light_radius"] = "%s %s %s" % (radius, radius, radius)
-						ent["_color"] = "%s %s %s" % (ftos(obj.data.color[0]), ftos(obj.data.color[1]), ftos(obj.data.color[2]))
+						ent["_color"] = tuple_to_float_string(obj.data.color)
 						ent["nospecular"] = "%d" % 0 if obj.data.use_specular else 1
 						ent["nodiffuse"] = "%d" % 0 if obj.data.use_diffuse else 1
 						if obj.bfg.light_material != "default":
