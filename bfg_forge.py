@@ -372,27 +372,28 @@ class ImportMaterials(bpy.types.Operator):
 			if name.startswith("textures") and not name in scene.bfg.material_decl_paths:
 				path = scene.bfg.material_decl_paths.add()
 				path.name = name
+				
+	@classmethod
+	def poll(cls, context):
+		return context.scene.bfg.game_path != ""
 									
 	def execute(self, context):
-		if context.scene.bfg.game_path:
-			self.num_materials_created = 0
-			self.num_materials_updated = 0
-			start_time = time.time() 
-			fs = FileSystem()
-			files = fs.find_files(r"materials\*.mtr")
-			wm = context.window_manager
-			wm.progress_begin(0, len(files))
-			for i, f in enumerate(files):
-				result = self.parse_material_file(f)
-				wm.progress_update(i)
-				self.num_materials_created += result[0]
-				self.num_materials_updated += result[1]
-			self.update_material_decl_paths(context.scene)
-			preview_collections["light"].needs_refresh = True
-			wm.progress_end()
-			self.report({'INFO'}, "Imported %d materials, updated %d in %.2f seconds" % (self.num_materials_created, self.num_materials_updated, time.time() - start_time))
-		else:
-			self.report({'ERROR'}, "RBDOOM-3-BFG path not set")
+		self.num_materials_created = 0
+		self.num_materials_updated = 0
+		start_time = time.time() 
+		fs = FileSystem()
+		files = fs.find_files(r"materials\*.mtr")
+		wm = context.window_manager
+		wm.progress_begin(0, len(files))
+		for i, f in enumerate(files):
+			result = self.parse_material_file(f)
+			wm.progress_update(i)
+			self.num_materials_created += result[0]
+			self.num_materials_updated += result[1]
+		self.update_material_decl_paths(context.scene)
+		preview_collections["light"].needs_refresh = True
+		wm.progress_end()
+		self.report({'INFO'}, "Imported %d materials, updated %d in %.2f seconds" % (self.num_materials_created, self.num_materials_updated, time.time() - start_time))
 		return {'FINISHED'}
 		
 def create_material_texture(fs, mat, texture, slot_number):
@@ -572,6 +573,10 @@ class RefreshMaterials(bpy.types.Operator):
 	bl_idname = "scene.refresh_materials"
 	bl_label = "Refresh Materials"
 	
+	@classmethod
+	def poll(cls, context):
+		return len(context.scene.bfg.material_decls) > 0
+	
 	def execute(self, context):
 		refresh_selected_objects_materials(context)
 		return {'FINISHED'}
@@ -704,25 +709,26 @@ class ImportEntities(bpy.types.Operator):
 						kvp.value = lex.parse_token()
 		print(" %d entities" % (num_entities_created + num_entities_updated))
 		return (num_entities_created, num_entities_updated)
+		
+	@classmethod
+	def poll(cls, context):
+		return context.scene.bfg.game_path != ""
 	
 	def execute(self, context):
-		if context.scene.bfg.game_path:
-			self.num_entities_created = 0
-			self.num_entities_updated = 0
-			start_time = time.time() 
-			fs = FileSystem()
-			files = fs.find_files(r"def\*.def")
-			wm = context.window_manager
-			wm.progress_begin(0, len(files))
-			for i, f in enumerate(files):
-				result = self.parse_def_file(context.scene, f)
-				wm.progress_update(i)
-				self.num_entities_created += result[0]
-				self.num_entities_updated += result[1]
-			wm.progress_end()
-			self.report({'INFO'}, "Imported %d entities, updated %d in %.2f seconds" % (self.num_entities_created, self.num_entities_updated, time.time() - start_time))
-		else:
-			self.report({'ERROR'}, "RBDOOM-3-BFG path not set")
+		self.num_entities_created = 0
+		self.num_entities_updated = 0
+		start_time = time.time() 
+		fs = FileSystem()
+		files = fs.find_files(r"def\*.def")
+		wm = context.window_manager
+		wm.progress_begin(0, len(files))
+		for i, f in enumerate(files):
+			result = self.parse_def_file(context.scene, f)
+			wm.progress_update(i)
+			self.num_entities_created += result[0]
+			self.num_entities_updated += result[1]
+		wm.progress_end()
+		self.report({'INFO'}, "Imported %d entities, updated %d in %.2f seconds" % (self.num_entities_created, self.num_entities_updated, time.time() - start_time))
 		return {'FINISHED'}
 		
 def create_object_color_material():
@@ -741,9 +747,14 @@ class AddEntity(bpy.types.Operator):
 	bl_idname = "scene.add_entity"
 	bl_label = "Add Entity"
 	
+	@classmethod
+	def poll(cls, context):
+		ae = context.scene.bfg.active_entity
+		return ae and ae != ""
+	
 	def execute(self, context):
 		ae = context.scene.bfg.active_entity
-		if ae != None and ae != "":
+		if ae and ae != "":
 			set_object_mode_and_clear_selection()
 			entity = context.scene.bfg.entities[ae]
 			entity_mins = entity.get_dict_value("editor_mins", "?")
@@ -824,7 +835,7 @@ class ShowEntityDescription(bpy.types.Operator):
 	@classmethod
 	def poll(cls, context):
 		ae = context.scene.bfg.active_entity
-		if ae:
+		if ae and ae != "ae":
 			ent = context.scene.bfg.entities[ae]
 			return ent.dict.get("editor_usage") != None
 		return False
@@ -853,7 +864,7 @@ class ShowEntityPropertyDescription(bpy.types.Operator):
 			n = 50
 			for i in range(0, len(info), n):
 				col.label(info[i:i+n])
-
+				
 	def invoke(self, context, event):
 		return context.window_manager.invoke_popup(self)
 
@@ -928,6 +939,10 @@ class AddStaticModel(bpy.types.Operator):
 	bl_label = "Add Static Model"
 	filepath = bpy.props.StringProperty(default="", options={'HIDDEN', 'SKIP_SAVE'})
 	filter_glob = bpy.props.StringProperty(default="*.lwo", options={'HIDDEN'})
+	
+	@classmethod
+	def poll(cls, context):
+		return context.scene.bfg.game_path != ""
 	
 	def execute(self, context):
 		# the func_static entity model value looks like this
