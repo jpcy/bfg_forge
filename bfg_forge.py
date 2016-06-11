@@ -730,6 +730,7 @@ class ImportEntities(bpy.types.Operator):
 			wm.progress_update(i)
 			self.num_entities_created += result[0]
 			self.num_entities_updated += result[1]
+		update_scene_entity_properties(context) # update entity objects with any new properties
 		wm.progress_end()
 		self.report({'INFO'}, "Imported %d entities, updated %d in %.2f seconds" % (self.num_entities_created, self.num_entities_updated, time.time() - start_time))
 		return {'FINISHED'}
@@ -746,16 +747,28 @@ def create_object_color_material():
 	mat.use_shadeless = True
 	
 def create_object_entity_properties(context, entity, is_inherited=False):
+	"""Create entity properties on the active object"""
 	for kvp in entity.dict:
 		if kvp.name.startswith("editor_var"):
 			prop_name = kvp.name.split()[1]
 			# prepend "inherited_" to inherited property names
 			prop_name = "inherited_" + prop_name
-			bpy.ops.object.game_property_new(type='STRING', name=prop_name)
+			if not context.active_object.game.properties.get(prop_name):
+				# don't create the prop if it already exists
+				bpy.ops.object.game_property_new(type='STRING', name=prop_name)
 	inherit = entity.dict.get("inherit")
 	if inherit:
 		parent_entity = context.scene.bfg.entities[inherit.value]
 		create_object_entity_properties(context, parent_entity, True)
+		
+def update_scene_entity_properties(context):
+	"""Add missing properties to existing entity objects"""
+	for obj in context.scene.objects:
+		if obj.bfg.type == 'ENTITY':
+			context.scene.objects.active = obj
+			entity = context.scene.bfg.entities[obj.bfg.classname]
+			create_object_entity_properties(context, entity)
+			break
 
 class AddEntity(bpy.types.Operator):
 	"""Add a new entity to the scene of the selected type"""
