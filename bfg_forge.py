@@ -1108,10 +1108,10 @@ class AddRoom(bpy.types.Operator):
 		bpy.ops.mesh.primitive_plane_add(radius=1)
 		bpy.ops.object.modifier_add(type='SOLIDIFY')
 		obj = context.active_object
-		obj.modifiers['Solidify'].offset = 1
-		obj.modifiers['Solidify'].use_even_offset = True
-		obj.modifiers['Solidify'].use_flip_normals = True
-		obj.modifiers['Solidify'].use_quality_normals = True
+		obj.modifiers[0].offset = 1
+		obj.modifiers[0].use_even_offset = True
+		obj.modifiers[0].use_flip_normals = True
+		obj.modifiers[0].use_quality_normals = True
 		obj.name = "room2D"
 		obj.data.name = "room2D"
 		obj.bfg.room_height = 4
@@ -1205,6 +1205,36 @@ class CopyRoom(bpy.types.Operator):
 					s.bfg.floor_material = obj.bfg.floor_material
 				update_room_plane_modifier(s)
 				update_room_plane_materials(s)
+		return {'FINISHED'}
+		
+class ConvertRoom(bpy.types.Operator):
+	"""Convert the selected 2D room(s) to 3D room(s)"""
+	bl_idname = "scene.convert_room"
+	bl_label = "Convert Room"
+	
+	def execute(self, context):
+		selected_objects = list(context.selected_objects) # copy the list, selected objects will change
+		for obj in selected_objects:
+			if obj.bfg.type == '2D_ROOM':
+				obj.bfg.type = '3D_ROOM'
+				
+				# create a new mesh, applying the solidify modifer
+				# swap the old mesh with the new one, preserving the name
+				# then delete the old mesh
+				old_mesh = obj.data
+				new_mesh_name = old_mesh.name
+				old_mesh.name = "_temp" + old_mesh.name
+				new_mesh = obj.to_mesh(context.scene, True, 'PREVIEW')
+				new_mesh.name = new_mesh_name
+				obj.data = new_mesh
+				bpy.data.meshes.remove(old_mesh)
+				
+				# remove the solidify modifier
+				context.scene.objects.active = obj
+				bpy.ops.object.modifier_remove(modifier=obj.modifiers[0].name)
+				
+				# 2D room UVs are never valid, so unwrap
+				bpy.ops.object.auto_uv_unwrap()
 		return {'FINISHED'}
 
 class BuildMap(bpy.types.Operator):
@@ -1660,25 +1690,25 @@ class ObjectPanel(bpy.types.Panel):
 			col.label(obj.name, icon=obj_icon)
 			if obj.bfg.type != 'NONE':
 				col.label("Type: " + obj.bfg.bl_rna.properties['type'].enum_items[obj.bfg.type].name)
-			if obj.bfg.type == '2D_ROOM' and obj.modifiers:
-				mod = obj.modifiers[0]
-				if mod.type == 'SOLIDIFY':
-					col.separator()
-					col.prop(obj.bfg, "room_height")
-					col.operator(CopyRoom.bl_idname, "Copy Room Height", icon='PASTEFLIPUP').copy_op = 'HEIGHT'
-					col.separator()
-					sub = col.column()
-					sub.enabled = False
-					sub.prop(obj.bfg, "ceiling_material", "Ceiling")
-					sub.prop(obj.bfg, "wall_material", "Wall")
-					sub.prop(obj.bfg, "floor_material", "Floor")
-					col.separator()
-					col.label("Copy Materials:", icon='PASTEFLIPUP')
-					row = col.row(align=True)
-					row.operator(CopyRoom.bl_idname, "Ceiling").copy_op = 'MATERIAL_CEILING'
-					row.operator(CopyRoom.bl_idname, "Wall").copy_op = 'MATERIAL_WALL'
-					row.operator(CopyRoom.bl_idname, "Floor").copy_op = 'MATERIAL_FLOOR'
-					row.operator(CopyRoom.bl_idname, "All").copy_op = 'MATERIAL_ALL'
+			if obj.bfg.type == '2D_ROOM':
+				col.separator()
+				col.prop(obj.bfg, "room_height")
+				col.operator(CopyRoom.bl_idname, "Copy Room Height", icon='PASTEFLIPUP').copy_op = 'HEIGHT'
+				col.separator()
+				sub = col.column()
+				sub.enabled = False
+				sub.prop(obj.bfg, "ceiling_material", "Ceiling")
+				sub.prop(obj.bfg, "wall_material", "Wall")
+				sub.prop(obj.bfg, "floor_material", "Floor")
+				col.separator()
+				col.label("Copy Materials:", icon='PASTEFLIPUP')
+				row = col.row(align=True)
+				row.operator(CopyRoom.bl_idname, "Ceiling").copy_op = 'MATERIAL_CEILING'
+				row.operator(CopyRoom.bl_idname, "Wall").copy_op = 'MATERIAL_WALL'
+				row.operator(CopyRoom.bl_idname, "Floor").copy_op = 'MATERIAL_FLOOR'
+				row.operator(CopyRoom.bl_idname, "All").copy_op = 'MATERIAL_ALL'
+				col.separator()
+				col.operator(ConvertRoom.bl_idname, ConvertRoom.bl_label, icon='SNAP_FACE')
 			elif obj.bfg.type == 'ENTITY':
 				col.separator()
 				col.prop(context.scene.bfg, "show_inherited_entity_props")
