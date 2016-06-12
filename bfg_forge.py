@@ -1284,6 +1284,7 @@ class BuildMap(bpy.types.Operator):
 		map.layers[scene.active_layer] = True
 		scene.objects.active = map
 		map.select = True
+		map.hide = False
 					
 		# combine rooms
 		if len(room_list) > 0:
