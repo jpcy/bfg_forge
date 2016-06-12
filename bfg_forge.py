@@ -1266,7 +1266,13 @@ class BuildMap(bpy.types.Operator):
 		if map_mesh_name in bpy.data.meshes:
 			old_map_mesh = bpy.data.meshes[map_mesh_name]
 			old_map_mesh.name = "map_old"
-		map_mesh = bpy.data.meshes.new(map_mesh_name)
+		if len(room_list) > 0:
+			# first room: generate the mesh and transform to worldspace
+			map_mesh = room_list[0].to_mesh(scene, True, 'PREVIEW')
+			map_mesh.name = map_mesh_name
+			map_mesh.transform(room_list[0].matrix_world)
+		else:
+			map_mesh = bpy.data.meshes.new(map_mesh_name)
 		if map_name in bpy.data.objects:
 			map = bpy.data.objects[map_name]
 			map.data = map_mesh
@@ -1280,8 +1286,12 @@ class BuildMap(bpy.types.Operator):
 		map.select = True
 					
 		# combine rooms
+		if len(room_list) > 0:
+			flip_object_normals(map)
 		for i, room in enumerate(room_list):
-			apply_boolean(map, room, 'UNION', flip_normals=True)
+			if i > 0:
+				# not the first room: bool union with existing mesh
+				apply_boolean(map, room, 'UNION', flip_normals=True)
 		map.select = True
 		if len(room_list) > 0:
 			flip_object_normals(map)
