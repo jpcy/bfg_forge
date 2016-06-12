@@ -1046,6 +1046,7 @@ def apply_boolean(dest, src, bool_op, flip_normals=False):
 	me = src.to_mesh(bpy.context.scene, True, 'PREVIEW')
 	if flip_normals:
 		flip_mesh_normals(me)
+	auto_unwrap(me, src.location, src.scale)
 	ob_bool = bpy.data.objects.new("_bool", me)
 	
 	# copy transform
@@ -1071,14 +1072,6 @@ def flip_object_normals(obj):
 	bpy.ops.mesh.flip_normals()
 	bpy.ops.object.editmode_toggle()
 	
-def auto_texture(obj):
-	bpy.ops.object.select_all(action='DESELECT')
-	obj.select = True
-	bpy.ops.object.editmode_toggle()
-	bpy.ops.mesh.select_all(action='SELECT')
-	bpy.ops.object.auto_uv_unwrap()
-	bpy.ops.object.editmode_toggle()
-
 def move_object_to_layer(obj, layer_number):
 	layers = 20 * [False]
 	layers[layer_number] = True
@@ -1271,6 +1264,7 @@ class BuildMap(bpy.types.Operator):
 			map_mesh = room_list[0].to_mesh(scene, True, 'PREVIEW')
 			map_mesh.name = map_mesh_name
 			map_mesh.transform(room_list[0].matrix_world)
+			auto_unwrap(map_mesh)
 		else:
 			map_mesh = bpy.data.meshes.new(map_mesh_name)
 		if map_name in bpy.data.objects:
@@ -1301,7 +1295,6 @@ class BuildMap(bpy.types.Operator):
 		for brush in brush_list:
 			apply_boolean(map, brush, 'UNION')
 			
-		auto_texture(map)
 		link_active_object_to_group("worldspawn")
 		move_object_to_layer(map, scene.bfg.map_layer)
 		map.hide_select = True
@@ -1319,103 +1312,105 @@ class BuildMap(bpy.types.Operator):
 ## UV UNWRAPPING
 ################################################################################
 
+def auto_unwrap(mesh, obj_location=Vector(), obj_scale=Vector((1, 1, 1)), axis='AUTO'):
+	if bpy.context.mode == 'EDIT_MESH':
+		bm = bmesh.from_edit_mesh(mesh)
+	else:
+		bm = bmesh.new()
+		bm.from_mesh(mesh)
+	uv_layer = bm.loops.layers.uv.verify()
+	bm.faces.layers.tex.verify()  # currently blender needs both layers.
+	for f in bm.faces:
+		if bpy.context.mode == 'EDIT_MESH' and not f.select:
+			continue # ignore faces that aren't selected in edit mode
+		mat = mesh.materials[f.material_index]
+		if len(mat.texture_slots) == 0:
+			continue
+		tex = bpy.data.textures[mat.texture_slots[0].name]
+		if not hasattr(tex, "image") or not tex.image: # if the texture type isn't set to "Image or Movie", the image attribute won't exist
+			continue
+		tex_width = tex.image.size[0]
+		tex_height = tex.image.size[1]
+		texel_density = bpy.context.scene.bfg.texel_density
+		nX = f.normal.x
+		nY = f.normal.y
+		nZ = f.normal.z
+		if nX < 0:
+			nX = nX * -1
+		if nY < 0:
+			nY = nY * -1
+		if nZ < 0:
+			nZ = nZ * -1
+		face_normal_largest = nX
+		face_direction = 'x'
+		if face_normal_largest < nY:
+			face_normal_largest = nY
+			face_direction = 'y'
+		if face_normal_largest < nZ:
+			face_normal_largest = nZ
+			face_direction = 'z'
+		if face_direction == 'x':
+			if f.normal.x < 0:
+				face_direction = '-x'
+		if face_direction == 'y':
+			if f.normal.y < 0:
+				face_direction = '-y'
+		if face_direction == 'z':
+			if f.normal.z < 0:
+				face_direction = '-z'
+		if axis == 'X':
+			face_direction = 'x'
+		if axis == 'Y':
+			face_direction = 'y'
+		if axis == 'Z':
+			face_direction = 'z'
+		if axis == '-X':
+			face_direction = '-x'
+		if axis == '-Y':
+			face_direction = '-y'
+		if axis == '-Z':
+			face_direction = '-z'
+		for l in f.loops:
+			luv = l[uv_layer]
+			if luv.pin_uv is not True:
+				if face_direction == 'x':
+					luv.uv.x = ((l.vert.co.y * obj_scale[1]) + obj_location[1]) * texel_density / tex_width
+					luv.uv.y = ((l.vert.co.z * obj_scale[2]) + obj_location[2]) * texel_density / tex_width
+				if face_direction == '-x':
+					luv.uv.x = (((l.vert.co.y * obj_scale[1]) + obj_location[1]) * texel_density / tex_width) * -1
+					luv.uv.y = ((l.vert.co.z * obj_scale[2]) + obj_location[2]) * texel_density / tex_width
+				if face_direction == 'y':
+					luv.uv.x = (((l.vert.co.x * obj_scale[0]) + obj_location[0]) * texel_density / tex_width) * -1
+					luv.uv.y = ((l.vert.co.z * obj_scale[2]) + obj_location[2]) * texel_density / tex_width
+				if face_direction == '-y':
+					luv.uv.x = ((l.vert.co.x * obj_scale[0]) + obj_location[0]) * texel_density / tex_width
+					luv.uv.y = ((l.vert.co.z * obj_scale[2]) + obj_location[2]) * texel_density / tex_width
+				if face_direction == 'z':
+					luv.uv.x = ((l.vert.co.x * obj_scale[0]) + obj_location[0]) * texel_density / tex_width
+					luv.uv.y = ((l.vert.co.y * obj_scale[1]) + obj_location[1]) * texel_density / tex_width
+				if face_direction == '-z':
+					luv.uv.x = (((l.vert.co.x * obj_scale[0]) + obj_location[0]) * texel_density / tex_width) * 1
+					luv.uv.y = (((l.vert.co.y * obj_scale[1]) + obj_location[1]) * texel_density / tex_width) * -1
+				luv.uv.x = luv.uv.x - bpy.context.scene.bfg.offset_x
+				luv.uv.y = luv.uv.y - bpy.context.scene.bfg.offset_y
+	if bpy.context.mode == 'EDIT_MESH':
+		bmesh.update_edit_mesh(mesh)
+	else:
+		bm.to_mesh(mesh)
+		bm.free()
+
 class AutoUnwrap(bpy.types.Operator):
 	bl_idname = "object.auto_uv_unwrap"
 	bl_label = "Unwrap"
 	axis = bpy.props.StringProperty(name="Axis", default='AUTO')
+	
+	@classmethod
+	def poll(cls, context):
+		return bpy.context.mode in ['EDIT_MESH', 'OBJECT']
 
 	def execute(self, context):
 		obj = context.active_object
-		me = obj.data
-		objectLocation = context.active_object.location
-		objectScale = context.active_object.scale
-		texelDensity = context.scene.bfg.texel_density
-		textureWidth = 64
-		textureHeight = 64
-		if bpy.context.mode == 'EDIT_MESH' or bpy.context.mode == 'OBJECT':
-			was_obj_mode = False
-			if bpy.context.mode == 'OBJECT':
-				was_obj_mode = True
-				bpy.ops.object.editmode_toggle()
-				bpy.ops.mesh.select_all(action='SELECT')
-			bm = bmesh.from_edit_mesh(me)
-			uv_layer = bm.loops.layers.uv.verify()
-			bm.faces.layers.tex.verify()  # currently blender needs both layers.
-			for f in bm.faces:
-				if f.select:
-					bpy.ops.uv.select_all(action='SELECT')
-					matIndex = f.material_index
-					if len(obj.data.materials) > matIndex:
-						if obj.data.materials[matIndex] is not None:
-							tex = context.active_object.data.materials[matIndex].active_texture
-							if tex:
-								if hasattr(tex, "image") and tex.image: # if the texture type isn't set to "Image or Movie", the image attribute won't exist
-									textureWidth = tex.image.size[0]
-									textureHeight = tex.image.size[1]
-								nX = f.normal.x
-								nY = f.normal.y
-								nZ = f.normal.z
-								if nX < 0:
-									nX = nX * -1
-								if nY < 0:
-									nY = nY * -1
-								if nZ < 0:
-									nZ = nZ * -1
-								faceNormalLargest = nX
-								faceDirection = 'x'
-								if faceNormalLargest < nY:
-									faceNormalLargest = nY
-									faceDirection = 'y'
-								if faceNormalLargest < nZ:
-									faceNormalLargest = nZ
-									faceDirection = 'z'
-								if faceDirection == 'x':
-									if f.normal.x < 0:
-										faceDirection = '-x'
-								if faceDirection == 'y':
-									if f.normal.y < 0:
-										faceDirection = '-y'
-								if faceDirection == 'z':
-									if f.normal.z < 0:
-										faceDirection = '-z'
-								if self.axis == 'X':
-									faceDirection = 'x'
-								if self.axis == 'Y':
-									faceDirection = 'y'
-								if self.axis == 'Z':
-									faceDirection = 'z'
-								if self.axis == '-X':
-									faceDirection = '-x'
-								if self.axis == '-Y':
-									faceDirection = '-y'
-								if self.axis == '-Z':
-									faceDirection = '-z'
-								for l in f.loops:
-									luv = l[uv_layer]
-									if luv.select and l[uv_layer].pin_uv is not True:
-										if faceDirection == 'x':
-											luv.uv.x = ((l.vert.co.y * objectScale[1]) + objectLocation[1]) * texelDensity / textureWidth
-											luv.uv.y = ((l.vert.co.z * objectScale[2]) + objectLocation[2]) * texelDensity / textureWidth
-										if faceDirection == '-x':
-											luv.uv.x = (((l.vert.co.y * objectScale[1]) + objectLocation[1]) * texelDensity / textureWidth) * -1
-											luv.uv.y = ((l.vert.co.z * objectScale[2]) + objectLocation[2]) * texelDensity / textureWidth
-										if faceDirection == 'y':
-											luv.uv.x = (((l.vert.co.x * objectScale[0]) + objectLocation[0]) * texelDensity / textureWidth) * -1
-											luv.uv.y = ((l.vert.co.z * objectScale[2]) + objectLocation[2]) * texelDensity / textureWidth
-										if faceDirection == '-y':
-											luv.uv.x = ((l.vert.co.x * objectScale[0]) + objectLocation[0]) * texelDensity / textureWidth
-											luv.uv.y = ((l.vert.co.z * objectScale[2]) + objectLocation[2]) * texelDensity / textureWidth
-										if faceDirection == 'z':
-											luv.uv.x = ((l.vert.co.x * objectScale[0]) + objectLocation[0]) * texelDensity / textureWidth
-											luv.uv.y = ((l.vert.co.y * objectScale[1]) + objectLocation[1]) * texelDensity / textureWidth
-										if faceDirection == '-z':
-											luv.uv.x = (((l.vert.co.x * objectScale[0]) + objectLocation[0]) * texelDensity / textureWidth) * 1
-											luv.uv.y = (((l.vert.co.y * objectScale[1]) + objectLocation[1]) * texelDensity / textureWidth) * -1
-										luv.uv.x = luv.uv.x - context.scene.bfg.offset_x
-										luv.uv.y = luv.uv.y - context.scene.bfg.offset_y
-			bmesh.update_edit_mesh(me)
-			if was_obj_mode:
-				bpy.ops.object.editmode_toggle()
+		auto_unwrap(obj.data, obj.location, obj.scale, self.axis)
 		return {'FINISHED'}
 
 class PinUV(bpy.types.Operator):
