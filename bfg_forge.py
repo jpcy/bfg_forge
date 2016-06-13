@@ -1345,9 +1345,6 @@ def auto_unwrap(mesh, obj_location=Vector(), obj_scale=Vector((1, 1, 1)), axis='
 		tex = bpy.data.textures[mat.texture_slots[0].name]
 		if not hasattr(tex, "image") or not tex.image: # if the texture type isn't set to "Image or Movie", the image attribute won't exist
 			continue
-		tex_width = tex.image.size[0]
-		tex_height = tex.image.size[1]
-		texel_density = bpy.context.scene.bfg.texel_density
 		nX = f.normal.x
 		nY = f.normal.y
 		nZ = f.normal.z
@@ -1386,27 +1383,29 @@ def auto_unwrap(mesh, obj_location=Vector(), obj_scale=Vector((1, 1, 1)), axis='
 			face_direction = '-y'
 		if axis == '-Z':
 			face_direction = '-z'
+		scale_x = _scale_to_game / tex.image.size[0] * (1.0 / bpy.context.scene.bfg.global_uv_scale)
+		scale_y = _scale_to_game / tex.image.size[1] * (1.0 / bpy.context.scene.bfg.global_uv_scale)
 		for l in f.loops:
 			luv = l[uv_layer]
 			if luv.pin_uv is not True:
 				if face_direction == 'x':
-					luv.uv.x = ((l.vert.co.y * obj_scale[1]) + obj_location[1]) * texel_density / tex_width
-					luv.uv.y = ((l.vert.co.z * obj_scale[2]) + obj_location[2]) * texel_density / tex_width
+					luv.uv.x = ((l.vert.co.y * obj_scale[1]) + obj_location[1]) * scale_x
+					luv.uv.y = ((l.vert.co.z * obj_scale[2]) + obj_location[2]) * scale_y
 				if face_direction == '-x':
-					luv.uv.x = (((l.vert.co.y * obj_scale[1]) + obj_location[1]) * texel_density / tex_width) * -1
-					luv.uv.y = ((l.vert.co.z * obj_scale[2]) + obj_location[2]) * texel_density / tex_width
+					luv.uv.x = (((l.vert.co.y * obj_scale[1]) + obj_location[1]) * scale_x) * -1
+					luv.uv.y = ((l.vert.co.z * obj_scale[2]) + obj_location[2]) * scale_y
 				if face_direction == 'y':
-					luv.uv.x = (((l.vert.co.x * obj_scale[0]) + obj_location[0]) * texel_density / tex_width) * -1
-					luv.uv.y = ((l.vert.co.z * obj_scale[2]) + obj_location[2]) * texel_density / tex_width
+					luv.uv.x = (((l.vert.co.x * obj_scale[0]) + obj_location[0]) * scale_x) * -1
+					luv.uv.y = ((l.vert.co.z * obj_scale[2]) + obj_location[2]) * scale_y
 				if face_direction == '-y':
-					luv.uv.x = ((l.vert.co.x * obj_scale[0]) + obj_location[0]) * texel_density / tex_width
-					luv.uv.y = ((l.vert.co.z * obj_scale[2]) + obj_location[2]) * texel_density / tex_width
+					luv.uv.x = ((l.vert.co.x * obj_scale[0]) + obj_location[0]) * scale_x
+					luv.uv.y = ((l.vert.co.z * obj_scale[2]) + obj_location[2]) * scale_y
 				if face_direction == 'z':
-					luv.uv.x = ((l.vert.co.x * obj_scale[0]) + obj_location[0]) * texel_density / tex_width
-					luv.uv.y = ((l.vert.co.y * obj_scale[1]) + obj_location[1]) * texel_density / tex_width
+					luv.uv.x = ((l.vert.co.x * obj_scale[0]) + obj_location[0]) * scale_x
+					luv.uv.y = ((l.vert.co.y * obj_scale[1]) + obj_location[1]) * scale_y
 				if face_direction == '-z':
-					luv.uv.x = (((l.vert.co.x * obj_scale[0]) + obj_location[0]) * texel_density / tex_width) * 1
-					luv.uv.y = (((l.vert.co.y * obj_scale[1]) + obj_location[1]) * texel_density / tex_width) * -1
+					luv.uv.x = (((l.vert.co.x * obj_scale[0]) + obj_location[0]) * scale_x) * 1
+					luv.uv.y = (((l.vert.co.y * obj_scale[1]) + obj_location[1]) * scale_y) * -1
 				luv.uv.x = luv.uv.x - bpy.context.scene.bfg.offset_x
 				luv.uv.y = luv.uv.y - bpy.context.scene.bfg.offset_y
 	if bpy.context.mode == 'EDIT_MESH':
@@ -1641,12 +1640,13 @@ class SettingsPanel(bpy.types.Panel):
 		col.prop(scene.bfg, "mod_dir")
 		col.operator(ImportMaterials.bl_idname, ImportMaterials.bl_label, icon='MATERIAL')
 		col.operator(ImportEntities.bl_idname, ImportEntities.bl_label, icon='POSE_HLT')
-		col = self.layout.column_flow(2)
-		col.prop(scene.bfg, "wireframe_rooms")
-		col.prop(scene.bfg, "backface_culling")
-		col.prop(scene.bfg, "show_entity_names")
-		col.prop(scene.bfg, "hide_bad_materials")
-		col.prop(scene.bfg, "shadeless_materials")
+		flow = col.column_flow(2)
+		flow.prop(scene.bfg, "wireframe_rooms")
+		flow.prop(scene.bfg, "backface_culling")
+		flow.prop(scene.bfg, "show_entity_names")
+		flow.prop(scene.bfg, "hide_bad_materials")
+		flow.prop(scene.bfg, "shadeless_materials")
+		col.prop(context.scene.bfg, "global_uv_scale")
 		
 class CreatePanel(bpy.types.Panel):
 	bl_label = "Create"
@@ -1771,8 +1771,6 @@ class UvPanel(bpy.types.Panel):
 	def draw(self, context):
 		layout = self.layout
 		col = layout.column(align=True)
-		col.label("Texel Density", icon='LATTICE_DATA')
-		col.prop(context.scene.bfg, "texel_density", "")
 		if context.mode == 'EDIT_MESH' or context.mode == 'OBJECT':
 			col = layout.column(align=True)
 			col.label("Mapping", icon='FACESEL_HLT')
@@ -1856,7 +1854,7 @@ class BfgScenePropertyGroup(bpy.types.PropertyGroup):
 	active_material_decl = bpy.props.EnumProperty(name="", items=material_decl_preview_items)
 	entities = bpy.props.CollectionProperty(type=EntityPropGroup)
 	active_entity = bpy.props.StringProperty(name="Active Entity", default="")
-	texel_density = bpy.props.IntProperty(name="Texel Density", default=128, step=128, min=8, max=512)
+	global_uv_scale = bpy.props.FloatProperty(name="Global UV Scale", description="Scale Automatically unwrapped UVs by this amount", default=0.5, step=0.1, min=0.1, max=10)
 	offset_x = bpy.props.FloatProperty(name="Offset X", default=0)
 	offset_y = bpy.props.FloatProperty(name="Offset Y", default=0)
 	nudge_amount = bpy.props.FloatProperty(name="Nudge Amount", default=0.125)
