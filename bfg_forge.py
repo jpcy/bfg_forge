@@ -1414,6 +1414,7 @@ def auto_unwrap(mesh, obj_location=Vector(), obj_scale=Vector((1, 1, 1)), axis='
 	else:
 		bm.to_mesh(mesh)
 		bm.free()
+		mesh.update()
 
 class AutoUnwrap(bpy.types.Operator):
 	bl_idname = "object.auto_uv_unwrap"
