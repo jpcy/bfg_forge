@@ -1039,17 +1039,27 @@ def flip_mesh_normals(mesh):
 		f.normal_flip()
 	bm.to_mesh(mesh)
 	bm.free()
-
+	
 def apply_boolean(dest, src, bool_op, flip_normals=False):
+	# auto unwrap this 3D room or brush if that's what the user wants
+	if src.bfg.type in ['3D_ROOM', 'BRUSH'] and src.bfg.auto_unwrap:
+		auto_unwrap(src.data, src.location, src.scale)
+		
+	# generate mesh for the source object
 	bpy.ops.object.select_all(action='DESELECT')
 	dest.select = True
 	me = src.to_mesh(bpy.context.scene, True, 'PREVIEW')
+	
 	if flip_normals:
 		flip_mesh_normals(me)
-	auto_unwrap(me, src.location, src.scale)
+		
+	# 2D rooms are always unwrapped (the to_mesh result, not the object - it's just a plane)
+	if src.bfg.type == '2D_ROOM':
+		auto_unwrap(me, src.location, src.scale)
+		
+	# bool object - need a temp object to hold the result of to_mesh
+	# copy transform from the source object
 	ob_bool = bpy.data.objects.new("_bool", me)
-	
-	# copy transform
 	ob_bool.location = src.location
 	ob_bool.scale = src.scale
 	ob_bool.rotation_euler = src.rotation_euler
@@ -1058,7 +1068,8 @@ def apply_boolean(dest, src, bool_op, flip_normals=False):
 	for mat in src.data.materials:
 		if not mat.name in dest.data.materials:
 			dest.data.materials.append(mat)	
-			
+	
+	# apply the boolean modifier
 	mod = dest.modifiers.new(name=src.name, type='BOOLEAN')
 	mod.object = ob_bool
 	mod.operation = bool_op
@@ -1261,10 +1272,15 @@ class BuildMap(bpy.types.Operator):
 			old_map_mesh.name = "map_old"
 		if len(room_list) > 0:
 			# first room: generate the mesh and transform to worldspace
+			if room_list[0].bfg.type == '3D_ROOM' and room_list[0].bfg.auto_unwrap:
+				auto_unwrap(room_list[0].data)
 			map_mesh = room_list[0].to_mesh(scene, True, 'PREVIEW')
 			map_mesh.name = map_mesh_name
 			map_mesh.transform(room_list[0].matrix_world)
-			auto_unwrap(map_mesh)
+			
+			# 2D rooms are always unwrapped (the to_mesh result, not the object - it's just a plane)
+			if room_list[0].bfg.type == '2D_ROOM':
+				auto_unwrap(map_mesh)
 		else:
 			map_mesh = bpy.data.meshes.new(map_mesh_name)
 		if map_name in bpy.data.objects:
@@ -1715,6 +1731,8 @@ class ObjectPanel(bpy.types.Panel):
 				row.operator(CopyRoom.bl_idname, "All").copy_op = 'MATERIAL_ALL'
 				col.separator()
 				col.operator(ConvertRoom.bl_idname, ConvertRoom.bl_label, icon='SNAP_FACE')
+			elif obj.bfg.type in ['3D_ROOM', 'BRUSH']:
+				col.prop(obj.bfg, "auto_unwrap")
 			elif obj.bfg.type == 'ENTITY':
 				col.separator()
 				col.prop(context.scene.bfg, "show_inherited_entity_props")
@@ -1843,6 +1861,7 @@ class BfgScenePropertyGroup(bpy.types.PropertyGroup):
 	nudge_amount = bpy.props.FloatProperty(name="Nudge Amount", default=0.125)
 	
 class BfgObjectPropertyGroup(bpy.types.PropertyGroup):
+	auto_unwrap = bpy.props.BoolProperty(name="Auto Unwrap", description="Auto Unwrap this object when the map is built", default=True)
 	classname = bpy.props.StringProperty(name="Classname", default="")
 	entity_model = bpy.props.StringProperty(name="Entity model", default="")
 	room_height = bpy.props.FloatProperty(name="Room Height", default=4, step=20, precision=1, update=update_room)
