@@ -1328,7 +1328,7 @@ class BuildMap(bpy.types.Operator):
 ## UV UNWRAPPING
 ################################################################################
 
-def auto_unwrap(mesh, obj_location=Vector(), obj_scale=Vector((1, 1, 1)), axis='AUTO'):
+def auto_unwrap(mesh, obj_location=Vector(), obj_scale=Vector((1, 1, 1))):
 	if bpy.context.mode == 'EDIT_MESH':
 		bm = bmesh.from_edit_mesh(mesh)
 	else:
@@ -1371,18 +1371,6 @@ def auto_unwrap(mesh, obj_location=Vector(), obj_scale=Vector((1, 1, 1)), axis='
 		if face_direction == 'z':
 			if f.normal.z < 0:
 				face_direction = '-z'
-		if axis == 'X':
-			face_direction = 'x'
-		if axis == 'Y':
-			face_direction = 'y'
-		if axis == 'Z':
-			face_direction = 'z'
-		if axis == '-X':
-			face_direction = '-x'
-		if axis == '-Y':
-			face_direction = '-y'
-		if axis == '-Z':
-			face_direction = '-z'
 		scale_x = _scale_to_game / tex.image.size[0] * (1.0 / bpy.context.scene.bfg.global_uv_scale)
 		scale_y = _scale_to_game / tex.image.size[1] * (1.0 / bpy.context.scene.bfg.global_uv_scale)
 		for l in f.loops:
@@ -1406,8 +1394,6 @@ def auto_unwrap(mesh, obj_location=Vector(), obj_scale=Vector((1, 1, 1)), axis='
 				if face_direction == '-z':
 					luv.uv.x = (((l.vert.co.x * obj_scale[0]) + obj_location[0]) * scale_x) * 1
 					luv.uv.y = (((l.vert.co.y * obj_scale[1]) + obj_location[1]) * scale_y) * -1
-				luv.uv.x = luv.uv.x - bpy.context.scene.bfg.offset_x
-				luv.uv.y = luv.uv.y - bpy.context.scene.bfg.offset_y
 	if bpy.context.mode == 'EDIT_MESH':
 		bmesh.update_edit_mesh(mesh)
 	else:
@@ -1417,8 +1403,7 @@ def auto_unwrap(mesh, obj_location=Vector(), obj_scale=Vector((1, 1, 1)), axis='
 
 class AutoUnwrap(bpy.types.Operator):
 	bl_idname = "object.auto_uv_unwrap"
-	bl_label = "Unwrap"
-	axis = bpy.props.StringProperty(name="Axis", default='AUTO')
+	bl_label = "Auto Unwrap"
 	
 	@classmethod
 	def poll(cls, context):
@@ -1426,23 +1411,7 @@ class AutoUnwrap(bpy.types.Operator):
 
 	def execute(self, context):
 		obj = context.active_object
-		auto_unwrap(obj.data, obj.location, obj.scale, self.axis)
-		return {'FINISHED'}
-
-class PinUV(bpy.types.Operator):
-	bl_idname = "object.auto_uv_pin"
-	bl_label = "Pin UV"
-	p = bpy.props.BoolProperty(name="tp", default=True)
-
-	def execute(self, context):
-		obj = bpy.context.object
-		if obj.mode == 'EDIT':
-			me = obj.data
-			bm = bmesh.from_edit_mesh(me)
-			uv_layer = bm.loops.layers.uv.verify()
-			bm.faces.layers.tex.verify()
-			bpy.ops.uv.pin(clear=self.p)
-			bmesh.update_edit_mesh(me)
+		auto_unwrap(obj.data, obj.location, obj.scale)
 		return {'FINISHED'}
 
 class NudgeUV(bpy.types.Operator):
@@ -1456,29 +1425,24 @@ class NudgeUV(bpy.types.Operator):
 		bm = bmesh.from_edit_mesh(me)
 		uv_layer = bm.loops.layers.uv.verify()
 		bm.faces.layers.tex.verify()  # currently blender needs both layers.
-
-		# adjust UVs on all selected faces
 		for f in bm.faces:
-			# is this face currently selected?
 			if f.select:
 				# make sure that all the uvs for the face are selected
 				bpy.ops.uv.select_all(action='SELECT')
-				# loop through the face uvs
 				for l in f.loops:
 					luv = l[uv_layer]
-					# only work on the selected UV layer
-					if luv.select:
+					if luv.select: # only work on the selected UV layer
 						if self.dir == 'LEFT':
-							luv.uv.x = luv.uv.x + context.scene.bfg.nudge_amount
-						if self.dir == 'RIGHT':
-							luv.uv.x = luv.uv.x - context.scene.bfg.nudge_amount
-						if self.dir == 'UP':
-							luv.uv.y = luv.uv.y - context.scene.bfg.nudge_amount
-						if self.dir == 'DOWN':
-							luv.uv.y = luv.uv.y + context.scene.bfg.nudge_amount
-						if self.dir == 'HORIZONTAL':
+							luv.uv.x = luv.uv.x + context.scene.bfg.uv_nudge_increment
+						elif self.dir == 'RIGHT':
+							luv.uv.x = luv.uv.x - context.scene.bfg.uv_nudge_increment
+						elif self.dir == 'UP':
+							luv.uv.y = luv.uv.y - context.scene.bfg.uv_nudge_increment
+						elif self.dir == 'DOWN':
+							luv.uv.y = luv.uv.y + context.scene.bfg.uv_nudge_increment
+						elif self.dir == 'HORIZONTAL':
 							luv.uv.x = luv.uv.x * -1
-						if self.dir == 'VERTICAL':
+						elif self.dir == 'VERTICAL':
 							luv.uv.y = luv.uv.y * -1
 		# update the mesh
 		bmesh.update_edit_mesh(me)
@@ -1706,36 +1670,36 @@ class ObjectPanel(bpy.types.Panel):
 	def draw(self, context):
 		obj = context.active_object
 		if obj and len(context.selected_objects) > 0:
-			col = self.layout.column(align=True)
+			col = self.layout.column()
 			obj_icon = 'OBJECT_DATAMODE'
 			if obj.type == 'LAMP':
 				obj_icon = 'LAMP_POINT'
-			col.label(obj.name, icon=obj_icon)
+			elif obj.bfg.type == 'ENTITY':
+				obj_icon = 'POSE_HLT'
+			obj_label = ""
 			if obj.bfg.type != 'NONE':
-				col.label("Type: " + obj.bfg.bl_rna.properties['type'].enum_items[obj.bfg.type].name)
+				obj_label += obj.bfg.bl_rna.properties['type'].enum_items[obj.bfg.type].name + ": "
+			obj_label += obj.name
+			col.label(obj_label, icon=obj_icon)
 			if obj.bfg.type == '2D_ROOM':
-				col.separator()
-				col.prop(obj.bfg, "room_height")
-				col.operator(CopyRoom.bl_idname, "Copy Room Height", icon='PASTEFLIPUP').copy_op = 'HEIGHT'
-				col.separator()
+				sub = col.column(align=True)
+				sub.prop(obj.bfg, "room_height")
+				sub.operator(CopyRoom.bl_idname, "Copy Room Height", icon='PASTEFLIPUP').copy_op = 'HEIGHT'
 				sub = col.column()
 				sub.enabled = False
 				sub.prop(obj.bfg, "ceiling_material", "Ceiling")
 				sub.prop(obj.bfg, "wall_material", "Wall")
 				sub.prop(obj.bfg, "floor_material", "Floor")
-				col.separator()
 				col.label("Copy Materials:", icon='PASTEFLIPUP')
 				row = col.row(align=True)
 				row.operator(CopyRoom.bl_idname, "Ceiling").copy_op = 'MATERIAL_CEILING'
 				row.operator(CopyRoom.bl_idname, "Wall").copy_op = 'MATERIAL_WALL'
 				row.operator(CopyRoom.bl_idname, "Floor").copy_op = 'MATERIAL_FLOOR'
 				row.operator(CopyRoom.bl_idname, "All").copy_op = 'MATERIAL_ALL'
-				col.separator()
 				col.operator(ConvertRoom.bl_idname, ConvertRoom.bl_label, icon='SNAP_FACE')
 			elif obj.bfg.type in ['3D_ROOM', 'BRUSH']:
 				col.prop(obj.bfg, "auto_unwrap")
 			elif obj.bfg.type == 'ENTITY':
-				col.separator()
 				col.prop(context.scene.bfg, "show_inherited_entity_props")
 				for prop in obj.game.properties:
 					is_inherited = prop.name.startswith("inherited_")
@@ -1749,17 +1713,14 @@ class ObjectPanel(bpy.types.Panel):
 					row.prop(prop, "value", text="")
 					row.operator(ShowEntityPropertyDescription.bl_idname, "", icon='INFO').name = name
 			elif obj.type == 'LAMP':
-				col.separator()
-				sub = col.row()
-				sub.prop(obj, "bfg_light_radius")
-				sub.prop(obj.data, "color", "")
+				row = col.row()
+				row.prop(obj, "bfg_light_radius")
+				row.prop(obj.data, "color", "")
 				col.prop(obj.data, "use_specular")
 				col.prop(obj.data, "use_diffuse")
 				col.template_icon_view(obj.bfg, "light_material")
-				col.separator()
 				col.prop(obj.bfg, "light_material", "")
 			if hasattr(obj.data, "materials") or len(context.selected_objects) > 1: # don't hide if multiple selections
-				col.separator()
 				col.operator(RefreshMaterials.bl_idname, RefreshMaterials.bl_label, icon='MATERIAL')
 
 class UvPanel(bpy.types.Panel):
@@ -1769,46 +1730,28 @@ class UvPanel(bpy.types.Panel):
 	bl_category = "BFGForge"
 
 	def draw(self, context):
-		layout = self.layout
-		col = layout.column(align=True)
-		if context.mode == 'EDIT_MESH' or context.mode == 'OBJECT':
-			col = layout.column(align=True)
-			col.label("Mapping", icon='FACESEL_HLT')
-			row = layout.row(align=True)
-			row.operator(AutoUnwrap.bl_idname, "Auto").axis = 'AUTO'
-			row = layout.row(align=True)
-			row.operator(AutoUnwrap.bl_idname, "X").axis = 'X'
-			row.operator(AutoUnwrap.bl_idname, "Y").axis = 'Y'
-			row.operator(AutoUnwrap.bl_idname, "Z").axis = 'Z'
-			row = layout.row(align=True)
-			row.operator(AutoUnwrap.bl_idname, "-X").axis = '-X'
-			row.operator(AutoUnwrap.bl_idname, "-Y").axis = '-Y'
-			row.operator(AutoUnwrap.bl_idname, "-Z").axis = '-Z'
-			if context.mode == 'EDIT_MESH':
-				row = layout.row(align=True)
-				row.operator(PinUV.bl_idname, "Pin UVs").p = False
-				row.operator(PinUV.bl_idname, "Un-Pin UVs").p = True
-				col = layout.column(align=True)
-				col.label("Offset", icon='FULLSCREEN_ENTER')
-				row = layout.row(align=True)
-				row.prop(context.scene.bfg, "offset_x", 'X')
-				row.prop(context.scene.bfg, "offset_y", 'Y')
-				col = layout.column(align=True)
-				col.label("Nudge UVs", icon='FORWARD')
-				row = layout.row(align=True)
-				row.operator(NudgeUV.bl_idname, "Left").dir = 'LEFT'
-				row.operator(NudgeUV.bl_idname, "Right").dir = 'RIGHT'
-				row = layout.row(align=True)
-				row.operator(NudgeUV.bl_idname, "Up").dir = 'UP'
-				row.operator(NudgeUV.bl_idname, "Down").dir = 'DOWN'
-				row = layout.row(align=True)
-				row.prop(context.scene.bfg, "nudge_amount", "Amount")
-				col = layout.column(align=True)
-				col.label("Flip", icon='LOOP_BACK')
-				row = layout.row(align=True)
-				row.operator(NudgeUV.bl_idname, "Horizontal").dir = 'HORIZONTAL'
-				row.operator(NudgeUV.bl_idname, "Vertical").dir = 'VERTICAL'
-				
+		obj = context.active_object
+		if not obj or len(context.selected_objects) == 0 or not hasattr(obj.data, "materials"):
+			return
+		col = self.layout.column(align=True)
+		col.operator(AutoUnwrap.bl_idname, AutoUnwrap.bl_label, icon='UV_FACESEL')
+		if context.mode != 'EDIT_MESH':
+			return
+		col.separator()
+		col.label("Nudge", icon='FORWARD')
+		row = col.row(align=True)
+		row.operator(NudgeUV.bl_idname, "Left").dir = 'LEFT'
+		row.operator(NudgeUV.bl_idname, "Right").dir = 'RIGHT'
+		row = col.row(align=True)
+		row.operator(NudgeUV.bl_idname, "Up").dir = 'UP'
+		row.operator(NudgeUV.bl_idname, "Down").dir = 'DOWN'
+		col.prop(context.scene.bfg, "uv_nudge_increment", "Increment")
+		col.separator()
+		col.label("Flip", icon='LOOP_BACK')
+		row = col.row(align=True)
+		row.operator(NudgeUV.bl_idname, "Horizontal").dir = 'HORIZONTAL'
+		row.operator(NudgeUV.bl_idname, "Vertical").dir = 'VERTICAL'
+
 ################################################################################
 ## PROPERTIES
 ################################################################################
@@ -1842,7 +1785,7 @@ class BfgScenePropertyGroup(bpy.types.PropertyGroup):
 	game_path = bpy.props.StringProperty(name="RBDOOM-3-BFG Path", description="RBDOOM-3-BFG Path", subtype='DIR_PATH')
 	mod_dir = bpy.props.StringProperty(name="Mod Directory")
 	wireframe_rooms = bpy.props.BoolProperty(name="Wireframe rooms", default=True, update=update_wireframe_rooms)
-	backface_culling = bpy.props.BoolProperty(name="Backface Culling", get=get_backface_culling, set=set_backface_culling)
+	backface_culling = bpy.props.BoolProperty(name="Backface culling", get=get_backface_culling, set=set_backface_culling)
 	show_entity_names = bpy.props.BoolProperty(name="Show entity names", default=False, update=update_show_entity_names)
 	hide_bad_materials = bpy.props.BoolProperty(name="Hide bad materials", description="Hide materials with missing diffuse textures", default=True, update=update_hide_bad_materials)
 	shadeless_materials = bpy.props.BoolProperty(name="Fullbright materials", description="Disable lighting on materials", default=True, update=update_shadeless_materials)
@@ -1855,12 +1798,10 @@ class BfgScenePropertyGroup(bpy.types.PropertyGroup):
 	entities = bpy.props.CollectionProperty(type=EntityPropGroup)
 	active_entity = bpy.props.StringProperty(name="Active Entity", default="")
 	global_uv_scale = bpy.props.FloatProperty(name="Global UV Scale", description="Scale Automatically unwrapped UVs by this amount", default=0.5, step=0.1, min=0.1, max=10)
-	offset_x = bpy.props.FloatProperty(name="Offset X", default=0)
-	offset_y = bpy.props.FloatProperty(name="Offset Y", default=0)
-	nudge_amount = bpy.props.FloatProperty(name="Nudge Amount", default=0.125)
+	uv_nudge_increment = bpy.props.FloatProperty(name="Nudge Increment", default=_scale_to_blender)
 	
 class BfgObjectPropertyGroup(bpy.types.PropertyGroup):
-	auto_unwrap = bpy.props.BoolProperty(name="Auto Unwrap", description="Auto Unwrap this object when the map is built", default=True)
+	auto_unwrap = bpy.props.BoolProperty(name="Auto unwrap on Build Map", description="Auto Unwrap this object when the map is built", default=True)
 	classname = bpy.props.StringProperty(name="Classname", default="")
 	entity_model = bpy.props.StringProperty(name="Entity model", default="")
 	room_height = bpy.props.FloatProperty(name="Room Height", default=4, step=20, precision=1, update=update_room)
