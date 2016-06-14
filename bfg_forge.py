@@ -204,6 +204,16 @@ def ftos(a):
 def tuple_to_float_string(t):
 	return "%s %s %s" % (ftos(t[0]), ftos(t[1]), ftos(t[2]))
 	
+def min_nullable(a, b):
+	if a == None or b < a:
+		return b
+	return a
+	
+def max_nullable(a, b):
+	if a == None or b > a:
+		return b
+	return a
+	
 def set_object_mode_and_clear_selection():
 	if bpy.context.active_object:
 		bpy.ops.object.mode_set(mode='OBJECT')
@@ -1414,10 +1424,10 @@ class AutoUnwrap(bpy.types.Operator):
 		auto_unwrap(obj.data, obj.location, obj.scale)
 		return {'FINISHED'}
 
-class NudgeUV(bpy.types.Operator):
-	bl_idname = "object.auto_uv_nudge"
-	bl_label = "Nudge UV"
-	dir = bpy.props.StringProperty(name="Some Floating Point", default='LEFT')
+class TransformUV(bpy.types.Operator):
+	bl_idname = "object.uv_transform"
+	bl_label = "Transform UV"
+	op = bpy.props.StringProperty(name="operation", default='NUDGE_LEFT')
 
 	def execute(self, context):
 		obj = context.active_object
@@ -1427,23 +1437,41 @@ class NudgeUV(bpy.types.Operator):
 		bm.faces.layers.tex.verify()  # currently blender needs both layers.
 		for f in bm.faces:
 			if f.select:
+				min = [None, None]
+				max = [None, None]
 				# make sure that all the uvs for the face are selected
 				bpy.ops.uv.select_all(action='SELECT')
 				for l in f.loops:
 					luv = l[uv_layer]
 					if luv.select: # only work on the selected UV layer
-						if self.dir == 'LEFT':
+						if self.op == 'NUDGE_LEFT':
 							luv.uv.x = luv.uv.x + context.scene.bfg.uv_nudge_increment
-						elif self.dir == 'RIGHT':
+						elif self.op == 'NUDGE_RIGHT':
 							luv.uv.x = luv.uv.x - context.scene.bfg.uv_nudge_increment
-						elif self.dir == 'UP':
+						elif self.op == 'NUDGE_UP':
 							luv.uv.y = luv.uv.y - context.scene.bfg.uv_nudge_increment
-						elif self.dir == 'DOWN':
+						elif self.op == 'NUDGE_DOWN':
 							luv.uv.y = luv.uv.y + context.scene.bfg.uv_nudge_increment
-						elif self.dir == 'HORIZONTAL':
+						elif self.op == 'FLIP_HORIZONTAL':
 							luv.uv.x = luv.uv.x * -1
-						elif self.dir == 'VERTICAL':
+						elif self.op == 'FLIP_VERTICAL':
 							luv.uv.y = luv.uv.y * -1
+						# stretching: calculate min/max
+						if self.op in ['STRETCH_HORIZONTAL', 'STRETCH']:
+							min[0] = min_nullable(min[0], luv.uv.x)
+							max[0] = max_nullable(max[0], luv.uv.x)
+						if self.op in ['STRETCH_VERTICAL', 'STRETCH']:
+							min[1] = min_nullable(min[1], luv.uv.y)
+							max[1] = max_nullable(max[1], luv.uv.y)
+				# apply stretching
+				if self.op in ['STRETCH_HORIZONTAL', 'STRETCH_VERTICAL', 'STRETCH']:
+					for l in f.loops:
+						luv = l[uv_layer]
+						if luv.select: # only work on the selected UV layer
+							if self.op in ['STRETCH_HORIZONTAL', 'STRETCH']:
+								luv.uv.x /= max[0] - min[0]
+							if self.op in ['STRETCH_VERTICAL', 'STRETCH']:
+								luv.uv.y /= max[1] - min[1]
 		# update the mesh
 		bmesh.update_edit_mesh(me)
 		return {'FINISHED'}
@@ -1740,17 +1768,23 @@ class UvPanel(bpy.types.Panel):
 		col.separator()
 		col.label("Nudge", icon='FORWARD')
 		row = col.row(align=True)
-		row.operator(NudgeUV.bl_idname, "Left").dir = 'LEFT'
-		row.operator(NudgeUV.bl_idname, "Right").dir = 'RIGHT'
+		row.operator(TransformUV.bl_idname, "Left").op = 'NUDGE_LEFT'
+		row.operator(TransformUV.bl_idname, "Right").op = 'NUDGE_RIGHT'
 		row = col.row(align=True)
-		row.operator(NudgeUV.bl_idname, "Up").dir = 'UP'
-		row.operator(NudgeUV.bl_idname, "Down").dir = 'DOWN'
+		row.operator(TransformUV.bl_idname, "Up").op = 'NUDGE_UP'
+		row.operator(TransformUV.bl_idname, "Down").op = 'NUDGE_DOWN'
 		col.prop(context.scene.bfg, "uv_nudge_increment", "Increment")
 		col.separator()
 		col.label("Flip", icon='LOOP_BACK')
 		row = col.row(align=True)
-		row.operator(NudgeUV.bl_idname, "Horizontal").dir = 'HORIZONTAL'
-		row.operator(NudgeUV.bl_idname, "Vertical").dir = 'VERTICAL'
+		row.operator(TransformUV.bl_idname, "Horizontal").op = 'FLIP_HORIZONTAL'
+		row.operator(TransformUV.bl_idname, "Vertical").op = 'FLIP_VERTICAL'
+		col.separator()
+		col.label("Stretch", icon='FULLSCREEN_ENTER')
+		row = col.row(align=True)
+		row.operator(TransformUV.bl_idname, "Horizontal").op = 'STRETCH_HORIZONTAL'
+		row.operator(TransformUV.bl_idname, "Vertical").op = 'STRETCH_VERTICAL'
+		row.operator(TransformUV.bl_idname, "Both").op = 'STRETCH'
 
 ################################################################################
 ## PROPERTIES
