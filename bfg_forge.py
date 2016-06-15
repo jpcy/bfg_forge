@@ -1451,22 +1451,22 @@ def uv_transform(context, operation):
 					luv.uv.x = luv.uv.x * -1
 				elif operation == 'FLIP_VERTICAL':
 					luv.uv.y = luv.uv.y * -1
-				# stretching: calculate min/max
+				# fitting: calculate min/max
 				if operation in ['FIT_HORIZONTAL', 'FIT_BOTH']:
 					min[0] = min_nullable(min[0], luv.uv.x)
 					max[0] = max_nullable(max[0], luv.uv.x)
 				if operation in ['FIT_VERTICAL', 'FIT_BOTH']:
 					min[1] = min_nullable(min[1], luv.uv.y)
 					max[1] = max_nullable(max[1], luv.uv.y)
-		# apply stretching
+		# apply fitting
 		if operation.startswith('FIT_'):
 			for l in f.loops:
 				luv = l[uv_layer]
 				if luv.select: # only work on the selected UV layer
 					if operation in ['FIT_HORIZONTAL', 'FIT_BOTH']:
-						luv.uv.x /= max[0] - min[0]
+						luv.uv.x = luv.uv.x / (max[0] - min[0]) * context.scene.bfg.uv_fit_repeat
 					if operation in ['FIT_VERTICAL', 'FIT_BOTH']:
-						luv.uv.y /= max[1] - min[1]
+						luv.uv.y = luv.uv.y / (max[1] - min[1]) * context.scene.bfg.uv_fit_repeat
 	bmesh.update_edit_mesh(obj.data)
 	
 class FitUV(bpy.types.Operator):
@@ -1808,6 +1808,7 @@ class UvPanel(bpy.types.Panel):
 		row.operator(FitUV.bl_idname, "Horizontal").axis = 'HORIZONTAL'
 		row.operator(FitUV.bl_idname, "Vertical").axis = 'VERTICAL'
 		row.operator(FitUV.bl_idname, "Both").axis = 'BOTH'
+		col.prop(context.scene.bfg, "uv_fit_repeat", "Repeat")
 
 ################################################################################
 ## PROPERTIES
@@ -1855,6 +1856,7 @@ class BfgScenePropertyGroup(bpy.types.PropertyGroup):
 	entities = bpy.props.CollectionProperty(type=EntityPropGroup)
 	active_entity = bpy.props.StringProperty(name="Active Entity", default="")
 	global_uv_scale = bpy.props.FloatProperty(name="Global UV Scale", description="Scale Automatically unwrapped UVs by this amount", default=0.5, step=0.1, min=0.1, max=10)
+	uv_fit_repeat = bpy.props.FloatProperty(name="UV Fit Repeat", default=1.0, step=0.1, min=0.1, max=10)
 	uv_nudge_increment = bpy.props.FloatProperty(name="Nudge Increment", default=_scale_to_blender)
 	
 class BfgObjectPropertyGroup(bpy.types.PropertyGroup):
