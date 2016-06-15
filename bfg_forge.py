@@ -1503,6 +1503,22 @@ class NudgeUV(bpy.types.Operator):
 		context.area.type = prev_area
 		return {'FINISHED'}
 		
+class RotateUV(bpy.types.Operator):
+	"""Rotate the selected face UVs"""
+	bl_idname = "object.uv_rotate"
+	bl_label = "Rotate UV"
+	dir = bpy.props.StringProperty(name="Direction", default='HORIZONTAL')
+
+	def execute(self, context):
+		prev_area = context.area.type
+		context.area.type = 'IMAGE_EDITOR'
+		if self.dir == 'LEFT':
+			bpy.ops.transform.rotate(value=math.radians(context.scene.bfg.uv_rotate_degrees))
+		elif self.dir == 'RIGHT':
+			bpy.ops.transform.rotate(value=math.radians(-context.scene.bfg.uv_rotate_degrees))
+		context.area.type = prev_area
+		return {'FINISHED'}
+		
 ################################################################################
 ## EXPORT
 ################################################################################
@@ -1802,6 +1818,12 @@ class UvPanel(bpy.types.Panel):
 		row.operator(NudgeUV.bl_idname, "Down").dir = 'DOWN'
 		col.prop(context.scene.bfg, "uv_nudge_increment", "Increment")
 		col.separator()
+		col.label("Rotate", icon='FILE_REFRESH')
+		row = col.row(align=True)
+		row.operator(RotateUV.bl_idname, "Left").dir = 'LEFT'
+		row.operator(RotateUV.bl_idname, "Right").dir = 'RIGHT'
+		col.prop(context.scene.bfg, "uv_rotate_degrees", "Degrees")
+		col.separator()
 		col.label("Flip", icon='LOOP_BACK')
 		row = col.row(align=True)
 		row.operator(FlipUV.bl_idname, "Horizontal").axis = 'HORIZONTAL'
@@ -1862,6 +1884,7 @@ class BfgScenePropertyGroup(bpy.types.PropertyGroup):
 	global_uv_scale = bpy.props.FloatProperty(name="Global UV Scale", description="Scale Automatically unwrapped UVs by this amount", default=0.5, step=0.1, min=0.1, max=10)
 	uv_fit_repeat = bpy.props.FloatProperty(name="UV Fit Repeat", default=1.0, step=0.1, min=0.1, max=10)
 	uv_nudge_increment = bpy.props.FloatProperty(name="Nudge Increment", default=_scale_to_blender)
+	uv_rotate_degrees = bpy.props.FloatProperty(name="UV Rotate Degrees", default=90.0, step=10.0, min=1.0, max=90.0)
 	
 class BfgObjectPropertyGroup(bpy.types.PropertyGroup):
 	auto_unwrap = bpy.props.BoolProperty(name="Auto unwrap on Build Map", description="Auto Unwrap this object when the map is built", default=True)
