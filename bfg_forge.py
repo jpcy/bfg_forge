@@ -1500,6 +1500,23 @@ class NudgeUV(bpy.types.Operator):
 		context.area.type = prev_area
 		return {'FINISHED'}
 		
+def is_uv_flipped(context):
+	# just the first face
+	obj = context.active_object
+	bm = bmesh.from_edit_mesh(obj.data)
+	uv_layer = bm.loops.layers.uv.active
+	if uv_layer:
+		for f in bm.faces:
+			if not f.select:
+				continue
+			v1 = f.loops[1][uv_layer].uv - f.loops[0][uv_layer].uv
+			v2 = f.loops[2][uv_layer].uv - f.loops[1][uv_layer].uv
+			if v1.cross(v2) >= 0:
+				return False
+			else:
+				return True
+	return False
+			
 class RotateUV(bpy.types.Operator):
 	"""Rotate the selected face UVs"""
 	bl_idname = "object.uv_rotate"
@@ -1509,10 +1526,12 @@ class RotateUV(bpy.types.Operator):
 	def execute(self, context):
 		prev_area = context.area.type
 		context.area.type = 'IMAGE_EDITOR'
-		if self.dir == 'LEFT':
-			bpy.ops.transform.rotate(value=math.radians(context.scene.bfg.uv_rotate_degrees))
-		elif self.dir == 'RIGHT':
-			bpy.ops.transform.rotate(value=math.radians(-context.scene.bfg.uv_rotate_degrees))
+		degrees = context.scene.bfg.uv_rotate_degrees
+		if self.dir == 'RIGHT':
+			degrees *= -1
+		if is_uv_flipped(context):
+			degrees *= -1 # swap left and right if the face normal is flipped
+		bpy.ops.transform.rotate(value=math.radians(degrees))
 		context.area.type = prev_area
 		return {'FINISHED'}
 		
