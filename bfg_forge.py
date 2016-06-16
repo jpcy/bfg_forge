@@ -1424,39 +1424,6 @@ class AutoUnwrap(bpy.types.Operator):
 		auto_unwrap(obj.data, obj.location, obj.scale)
 		return {'FINISHED'}
 		
-def uv_transform(context, operation):
-	obj = context.active_object
-	bm = bmesh.from_edit_mesh(obj.data)
-	uv_layer = bm.loops.layers.uv.verify()
-	bm.faces.layers.tex.verify()  # currently blender needs both layers.
-	for f in bm.faces:
-		if not f.select:
-			continue
-		min = [None, None]
-		max = [None, None]
-		# make sure that all the uvs for the face are selected
-		bpy.ops.uv.select_all(action='SELECT')
-		for l in f.loops:
-			luv = l[uv_layer]
-			if luv.select: # only work on the selected UV layer
-				# fitting: calculate min/max
-				if operation in ['FIT_HORIZONTAL', 'FIT_BOTH']:
-					min[0] = min_nullable(min[0], luv.uv.x)
-					max[0] = max_nullable(max[0], luv.uv.x)
-				if operation in ['FIT_VERTICAL', 'FIT_BOTH']:
-					min[1] = min_nullable(min[1], luv.uv.y)
-					max[1] = max_nullable(max[1], luv.uv.y)
-		# apply fitting
-		if operation.startswith('FIT_'):
-			for l in f.loops:
-				luv = l[uv_layer]
-				if luv.select: # only work on the selected UV layer
-					if operation in ['FIT_HORIZONTAL', 'FIT_BOTH']:
-						luv.uv.x = luv.uv.x / (max[0] - min[0]) * context.scene.bfg.uv_fit_repeat
-					if operation in ['FIT_VERTICAL', 'FIT_BOTH']:
-						luv.uv.y = luv.uv.y / (max[1] - min[1]) * context.scene.bfg.uv_fit_repeat
-	bmesh.update_edit_mesh(obj.data)
-	
 class FitUV(bpy.types.Operator):
 	"""Fit the selected face UVs to the texture dimensions along the specified axis"""
 	bl_idname = "object.uv_fit"
@@ -1464,7 +1431,37 @@ class FitUV(bpy.types.Operator):
 	axis = bpy.props.StringProperty(name="Axis", default='BOTH')
 
 	def execute(self, context):
-		uv_transform(context, 'FIT_' + self.axis)
+		obj = context.active_object
+		bm = bmesh.from_edit_mesh(obj.data)
+		uv_layer = bm.loops.layers.uv.active
+		if not uv_layer:
+			return {'CANCELLED'}
+		for f in bm.faces:
+			if not f.select:
+				continue
+			# calculate min/max
+			min = [None, None]
+			max = [None, None]
+			for l in f.loops:
+				uv = l[uv_layer].uv
+				if self.axis in ['HORIZONTAL', 'BOTH']:
+					min[0] = min_nullable(min[0], uv.x)
+					max[0] = max_nullable(max[0], uv.x)
+				if self.axis in ['VERTICAL', 'BOTH']:
+					min[1] = min_nullable(min[1], uv.y)
+					max[1] = max_nullable(max[1], uv.y)
+			# apply fitting
+			for l in f.loops:
+				uv = l[uv_layer].uv
+				if self.axis in ['HORIZONTAL', 'BOTH']:
+					range = max[0] - min[0]
+					if range != 0: # will be 0 if UVs are uninitialized
+						uv.x = uv.x / range * context.scene.bfg.uv_fit_repeat
+				if self.axis in ['VERTICAL', 'BOTH']:
+					range = max[1] - min[1]
+					if range != 0: # will be 0 if UVs are uninitialized
+						uv.y = uv.y / range * context.scene.bfg.uv_fit_repeat
+		bmesh.update_edit_mesh(obj.data)
 		return {'FINISHED'}
 		
 class FlipUV(bpy.types.Operator):
