@@ -18,6 +18,7 @@
 bl_info = {
 	'name': 'BFG Forge',
 	'author': 'Jonathan Young',
+	'blender': (2, 75, 0),
 	'category': 'Game Engine'
 	}
 	
@@ -88,8 +89,9 @@ class Lexer:
 		end = self.pos
 		return self.data[start:end]
 		
-	def skip_bracket_delimiter_section(self, opening, closing):
-		self.expect_token(opening)
+	def skip_bracket_delimiter_section(self, opening, closing, already_open = False):
+		if not already_open:
+			self.expect_token(opening)
 		num_required_closing = 1
 		while True:
 			token = self.parse_token()
@@ -395,7 +397,7 @@ class ImportMaterials(bpy.types.Operator):
 		self.num_materials_updated = 0
 		start_time = time.time() 
 		fs = FileSystem()
-		files = fs.find_files(r"materials\*.mtr")
+		files = fs.find_files(os.path.join("materials", "*.mtr"))
 		wm = context.window_manager
 		wm.progress_begin(0, len(files))
 		for i, f in enumerate(files):
@@ -688,8 +690,8 @@ class ImportEntities(bpy.types.Operator):
 			if token == None:
 				break
 			if not token == "entityDef":
-				lex.parse_token() # name
-				lex.skip_bracket_delimiter_section("{", "}")
+				name = lex.parse_token() # name, sometimes opening brace
+				lex.skip_bracket_delimiter_section("{", "}", True if name == "{" else False)
 			else:
 				name = lex.parse_token()
 				if name in scene.bfg.entities:
@@ -732,7 +734,7 @@ class ImportEntities(bpy.types.Operator):
 		self.num_entities_updated = 0
 		start_time = time.time() 
 		fs = FileSystem()
-		files = fs.find_files(r"def\*.def")
+		files = fs.find_files(os.path.join("def", "*.def"))
 		wm = context.window_manager
 		wm.progress_begin(0, len(files))
 		for i, f in enumerate(files):
