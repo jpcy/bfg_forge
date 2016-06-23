@@ -1590,7 +1590,7 @@ class ExportMap(bpy.types.Operator, ExportHelper):
 				uv = mesh.uv_layers[0].data[vm[1]].uv
 				vert = OrderedDict()
 				vert["xyz"] = (v.co.x * _scale_to_game, v.co.y * _scale_to_game, v.co.z * _scale_to_game)
-				vert["st"] = (uv.x, uv.y)
+				vert["st"] = (uv.x, 1.0 - uv.y)
 				vert["normal"] = (v.normal.x, v.normal.y, v.normal.z)
 				verts.append(vert)
 		
