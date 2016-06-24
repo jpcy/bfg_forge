@@ -522,10 +522,10 @@ class AssignMaterial(bpy.types.Operator):
 	def execute(self, context):
 		obj = context.active_object
 		if not obj:
-			return {'FINISHED'}
+			return {'CANCELLED'}
 		mat = get_or_create_active_material(context)
 		if not mat:
-			return {'FINISHED'}
+			return {'CANCELLED'}
 		if obj.mode == 'EDIT' and hasattr(obj.data, "materials"):
 			# edit mode: assign to selected mesh faces
 			bm = bmesh.from_edit_mesh(obj.data)
@@ -1004,10 +1004,11 @@ class AddStaticModel(bpy.types.Operator):
 		relative_path = fs.calculate_relative_path(self.properties.filepath)
 		if not relative_path:
 			self.report({'ERROR'}, "File \"%s\" not found. Path must descend from \"%s\"" % (self.properties.filepath, context.scene.bfg.game_path))
-			return {'FINISHED'}
+			return {'CANCELLED'}
 		(obj, error_message) = create_model_object(context, self.properties.filepath, relative_path)
 		if error_message:
 			self.report({'ERROR'}, error_message)
+			return {'CANCELLED'}
 		else:
 			obj.bfg.type = 'STATIC_MODEL'
 			obj.bfg.classname = "func_static"
