@@ -1558,6 +1558,13 @@ class ExportMap(bpy.types.Operator, ExportHelper):
 		temp_obj.select = True
 		context.scene.objects.active = temp_obj
 		bpy.ops.object.editmode_toggle()
+		
+		# duplicate verts/0 length edges mess up dmap portal creation
+		bm = bmesh.from_edit_mesh(temp_obj.data)
+		bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=_scale_to_blender*0.99) # epsilon < 1 game unit
+		bmesh.update_edit_mesh(temp_obj.data)
+		bm.free()
+		
 		bpy.ops.mesh.select_all(action='SELECT')
 		#bpy.ops.mesh.vert_connect_concave() # make faces convex
 		bpy.ops.mesh.quads_convert_to_tris() # triangulate
