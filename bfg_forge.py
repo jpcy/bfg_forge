@@ -1066,12 +1066,12 @@ def apply_boolean(dest, src, bool_op, flip_normals=False):
 	dest.select = True
 	me = src.to_mesh(bpy.context.scene, True, 'PREVIEW')
 	
-	if flip_normals:
-		flip_mesh_normals(me)
-		
 	# 2D rooms are always unwrapped (the to_mesh result, not the object - it's just a plane)
 	if src.bfg.type == '2D_ROOM':
 		auto_unwrap(me, src.location, src.scale)
+		
+	if flip_normals:
+		flip_mesh_normals(me)
 		
 	# bool object - need a temp object to hold the result of to_mesh
 	# copy transform from the source object
