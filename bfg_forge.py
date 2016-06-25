@@ -1420,6 +1420,7 @@ def auto_unwrap(mesh, obj_location=Vector(), obj_scale=Vector((1, 1, 1))):
 class AutoUnwrap(bpy.types.Operator):
 	bl_idname = "object.auto_uv_unwrap"
 	bl_label = "Auto Unwrap"
+	bl_options = {'REGISTER','UNDO'}
 	
 	@classmethod
 	def poll(cls, context):
@@ -1434,6 +1435,7 @@ class FitUV(bpy.types.Operator):
 	"""Fit the selected face UVs to the texture dimensions along the specified axis"""
 	bl_idname = "object.uv_fit"
 	bl_label = "Fit UV"
+	bl_options = {'REGISTER','UNDO'}
 	axis = bpy.props.StringProperty(name="Axis", default='BOTH')
 	
 	@classmethod
@@ -1478,6 +1480,7 @@ class FlipUV(bpy.types.Operator):
 	"""Flip the selected face UVs along the specified axis"""
 	bl_idname = "object.uv_flip"
 	bl_label = "Flip UV"
+	bl_options = {'REGISTER','UNDO'}
 	axis = bpy.props.StringProperty(name="Axis", default='HORIZONTAL')
 	
 	@classmethod
@@ -1498,6 +1501,7 @@ class NudgeUV(bpy.types.Operator):
 	"""Nudge the selected face UVs in the specified direction"""
 	bl_idname = "object.uv_nudge"
 	bl_label = "Nudge UV"
+	bl_options = {'REGISTER','UNDO'}
 	dir = bpy.props.StringProperty(name="Direction", default='LEFT')
 	
 	@classmethod
@@ -1539,6 +1543,7 @@ class RotateUV(bpy.types.Operator):
 	"""Rotate the selected face UVs"""
 	bl_idname = "object.uv_rotate"
 	bl_label = "Rotate UV"
+	bl_options = {'REGISTER','UNDO'}
 	dir = bpy.props.StringProperty(name="Direction", default='HORIZONTAL')
 	
 	@classmethod
