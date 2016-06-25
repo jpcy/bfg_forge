@@ -1435,6 +1435,10 @@ class FitUV(bpy.types.Operator):
 	bl_idname = "object.uv_fit"
 	bl_label = "Fit UV"
 	axis = bpy.props.StringProperty(name="Axis", default='BOTH')
+	
+	@classmethod
+	def poll(cls, context):
+		return context.mode == 'EDIT_MESH'
 
 	def execute(self, context):
 		obj = context.active_object
@@ -1475,6 +1479,10 @@ class FlipUV(bpy.types.Operator):
 	bl_idname = "object.uv_flip"
 	bl_label = "Flip UV"
 	axis = bpy.props.StringProperty(name="Axis", default='HORIZONTAL')
+	
+	@classmethod
+	def poll(cls, context):
+		return context.mode == 'EDIT_MESH'
 
 	def execute(self, context):
 		prev_area = context.area.type
@@ -1491,6 +1499,10 @@ class NudgeUV(bpy.types.Operator):
 	bl_idname = "object.uv_nudge"
 	bl_label = "Nudge UV"
 	dir = bpy.props.StringProperty(name="Direction", default='LEFT')
+	
+	@classmethod
+	def poll(cls, context):
+		return context.mode == 'EDIT_MESH'
 
 	def execute(self, context):
 		prev_area = context.area.type
@@ -1528,6 +1540,10 @@ class RotateUV(bpy.types.Operator):
 	bl_idname = "object.uv_rotate"
 	bl_label = "Rotate UV"
 	dir = bpy.props.StringProperty(name="Direction", default='HORIZONTAL')
+	
+	@classmethod
+	def poll(cls, context):
+		return context.mode == 'EDIT_MESH'
 
 	def execute(self, context):
 		prev_area = context.area.type
