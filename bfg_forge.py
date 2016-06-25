@@ -176,6 +176,9 @@ class FileSystem:
 			if split[1] == "":
 				# no extension, try tga
 				path = self.find_file_path(split[0] + ".tga")
+				if not path:
+					# no tga, try png
+					path = self.find_file_path(split[0] + ".png")
 		return path
 		
 	def find_files(self, pattern):
