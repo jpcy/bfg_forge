@@ -779,7 +779,7 @@ def create_object_entity_properties(context, entity, is_inherited=False):
 def update_scene_entity_properties(context):
 	"""Add missing properties to existing entity objects"""
 	for obj in context.scene.objects:
-		if obj.bfg.type == 'ENTITY':
+		if obj.bfg.type in ['BRUSH_ENTITY', 'ENTITY']:
 			context.scene.objects.active = obj
 			entity = context.scene.bfg.entities[obj.bfg.classname]
 			create_object_entity_properties(context, entity)
@@ -798,21 +798,30 @@ class AddEntity(bpy.types.Operator):
 	def execute(self, context):
 		ae = context.scene.bfg.active_entity
 		if ae and ae != "":
+			active_object = context.active_object
+			selected_objects = context.selected_objects
 			set_object_mode_and_clear_selection()
 			entity = context.scene.bfg.entities[ae]
 			entity_mins = entity.get_dict_value("editor_mins", "?")
 			entity_maxs = entity.get_dict_value("editor_maxs", "?")
 			if entity_mins == "?" or entity_maxs == "?":
-				# create as empty
+				# brush entity, create as empty
+				if not (active_object and active_object.bfg.type in ['NONE','BRUSH'] and len(selected_objects) > 0):
+					self.report({'ERROR'}, "Brush entities require a brush to be selected")
+					return {'CANCELLED'}
 				bpy.ops.object.empty_add(type='SPHERE')
 				obj = context.active_object
 				obj.empty_draw_size = 0.5
 				obj.hide_render = True
+				obj.location = active_object.location
+				obj.lock_rotation = [True, True, True]
+				obj.lock_scale = [True, True, True]
+				obj.bfg.type = 'BRUSH_ENTITY'
 			else:
-				# create as mesh
+				# normal entity
 				model = entity.get_dict_value("model")
 				obj = None
-				if model:
+				if model: # create as mesh
 					fs = FileSystem()
 					filename = fs.find_file_path(model)
 					(obj, error_message) = create_model_object(context, filename, model)
@@ -846,11 +855,19 @@ class AddEntity(bpy.types.Operator):
 				obj.lock_scale = [True, True, True]
 				obj.show_axis = True # x will be forward
 				obj.show_name = context.scene.bfg.show_entity_names
-			obj.bfg.type = 'ENTITY'
+				obj.bfg.type = 'ENTITY'
 			obj.bfg.classname = ae
 			obj.name = ae
 			link_active_object_to_group("entities")
 			create_object_entity_properties(context, entity)
+			
+			# parent selected objects to this brush entity, and link them to the "entities" group
+			if obj.bfg.type == 'BRUSH_ENTITY':
+				group = bpy.data.groups["entities"]
+				for s in selected_objects:
+					s.location -= obj.location
+					s.parent = obj
+					group.objects.link(s)
 		return {'FINISHED'}
 		
 class ShowEntityDescription(bpy.types.Operator):
@@ -889,28 +906,23 @@ class ShowEntityPropertyDescription(bpy.types.Operator):
 	bl_idname = "object.show_entity_property_description"
 	bl_label = "Show Entity Property Description"
 	bl_options = {'REGISTER','UNDO','INTERNAL'}
+	classname = bpy.props.StringProperty(default="")
 	name = bpy.props.StringProperty(default="")
 	
 	def find_prop_info(self, context, entity):
-		print(entity.name)
 		info = entity.get_dict_value("editor_var " + self.name)
 		if info:
-			print("info:", info)
 			return info
 		inherit = entity.dict.get("inherit")
 		if inherit:
-			print("inherit:", inherit)
 			parent_entity = context.scene.bfg.entities[inherit.value]
 			return self.find_prop_info(context, parent_entity)
-		print("default")
 		return None
 
 	def draw(self, context):
 		col = self.layout.column()
-		obj = context.active_object
-		if obj.bfg.type == 'ENTITY' and self.name != "":
-			entity = context.scene.bfg.entities[obj.bfg.classname]
-			print("finding:", self.name)
+		if self.classname != "" and self.name != "":
+			entity = context.scene.bfg.entities[self.classname]
 			info = self.find_prop_info(context, entity)
 			if not info:
 				info = "No info"
@@ -1062,23 +1074,21 @@ def apply_boolean(dest, src, bool_op, flip_normals=False):
 		auto_unwrap(src.data, src.location, src.scale)
 		
 	# generate mesh for the source object
+	# transform to worldspace
 	bpy.ops.object.select_all(action='DESELECT')
 	dest.select = True
 	me = src.to_mesh(bpy.context.scene, True, 'PREVIEW')
+	me.transform(src.matrix_world)
 	
 	# 2D rooms are always unwrapped (the to_mesh result, not the object - it's just a plane)
 	if src.bfg.type == '2D_ROOM':
-		auto_unwrap(me, src.location, src.scale)
+		auto_unwrap(me)
 		
 	if flip_normals:
 		flip_mesh_normals(me)
 		
 	# bool object - need a temp object to hold the result of to_mesh
-	# copy transform from the source object
 	ob_bool = bpy.data.objects.new("_bool", me)
-	ob_bool.location = src.location
-	ob_bool.scale = src.scale
-	ob_bool.rotation_euler = src.rotation_euler
 	
 	# copy materials
 	for mat in src.data.materials:
@@ -1670,13 +1680,13 @@ class ExportMap(bpy.types.Operator, ExportHelper):
 			
 			# write the rest of the entities
 			for obj in context.scene.objects:
-				if obj.bfg.type in ['ENTITY', 'STATIC_MODEL'] or obj.type == 'LAMP':
+				if obj.bfg.type in ['BRUSH_ENTITY', 'ENTITY', 'STATIC_MODEL'] or obj.type == 'LAMP':
 					ent = OrderedDict()
 					ent["entity"] = entity_index
 					ent["classname"] = "light" if obj.type == 'LAMP' else obj.bfg.classname
 					ent["name"] = obj.name
 					ent["origin"] = tuple_to_float_string(obj.location * _scale_to_game)
-					if obj.bfg.type == 'ENTITY':
+					if obj.bfg.type in ['BRUSH_ENTITY','ENTITY']:
 						if obj.rotation_euler.z != 0.0:
 							ent["angle"] = ftos(math.degrees(obj.rotation_euler.z))
 						for prop in obj.game.properties:
@@ -1787,21 +1797,40 @@ class ObjectPanel(bpy.types.Panel):
 	bl_space_type = 'VIEW_3D'
 	bl_region_type = 'TOOLS'
 	bl_category = "BFGForge"
+	
+	def draw_object_label(self, col, obj):
+		obj_icon = 'OBJECT_DATAMODE'
+		if obj.type == 'LAMP':
+			obj_icon = 'LAMP_POINT'
+		elif obj.bfg.type in ['BRUSH_ENTITY','ENTITY']:
+			obj_icon = 'POSE_HLT'
+		obj_label = ""
+		if obj.bfg.type != 'NONE':
+			obj_label += obj.bfg.bl_rna.properties['type'].enum_items[obj.bfg.type].name + ": "
+		obj_label += obj.name
+		col.label(obj_label, icon=obj_icon)
+	
+	def draw_entity_properties(self, context, col, obj):
+		col.prop(context.scene.bfg, "show_inherited_entity_props")
+		for prop in obj.game.properties:
+			is_inherited = prop.name.startswith("inherited_")
+			if not context.scene.bfg.show_inherited_entity_props and is_inherited:
+				continue # user doesn't want to see inherited props
+			row = col.row(align=True)
+			name = prop.name
+			if is_inherited:
+				name = name[len("inherited_"):] # remove the prefix
+			row.label(name + ":")
+			row.prop(prop, "value", text="")
+			props = row.operator(ShowEntityPropertyDescription.bl_idname, "", icon='INFO')
+			props.classname = obj.bfg.classname
+			props.name = name
 
 	def draw(self, context):
 		obj = context.active_object
 		if obj and len(context.selected_objects) > 0:
 			col = self.layout.column()
-			obj_icon = 'OBJECT_DATAMODE'
-			if obj.type == 'LAMP':
-				obj_icon = 'LAMP_POINT'
-			elif obj.bfg.type == 'ENTITY':
-				obj_icon = 'POSE_HLT'
-			obj_label = ""
-			if obj.bfg.type != 'NONE':
-				obj_label += obj.bfg.bl_rna.properties['type'].enum_items[obj.bfg.type].name + ": "
-			obj_label += obj.name
-			col.label(obj_label, icon=obj_icon)
+			self.draw_object_label(col, obj)
 			if obj.bfg.type == '2D_ROOM':
 				sub = col.column(align=True)
 				sub.prop(obj.bfg, "room_height")
@@ -1820,19 +1849,8 @@ class ObjectPanel(bpy.types.Panel):
 				col.operator(ConvertRoom.bl_idname, ConvertRoom.bl_label, icon='SNAP_FACE')
 			elif obj.bfg.type in ['3D_ROOM', 'BRUSH']:
 				col.prop(obj.bfg, "auto_unwrap")
-			elif obj.bfg.type == 'ENTITY':
-				col.prop(context.scene.bfg, "show_inherited_entity_props")
-				for prop in obj.game.properties:
-					is_inherited = prop.name.startswith("inherited_")
-					if not context.scene.bfg.show_inherited_entity_props and is_inherited:
-						continue # user doesn't want to see inherited props
-					row = col.row(align=True)
-					name = prop.name
-					if is_inherited:
-						name = name[len("inherited_"):] # remove the prefix
-					row.label(name + ":")
-					row.prop(prop, "value", text="")
-					row.operator(ShowEntityPropertyDescription.bl_idname, "", icon='INFO').name = name
+			elif obj.bfg.type in ['BRUSH_ENTITY','ENTITY']:
+				self.draw_entity_properties(context, col, obj)
 			elif obj.type == 'LAMP':
 				row = col.row()
 				row.prop(obj, "bfg_light_radius")
@@ -1843,6 +1861,10 @@ class ObjectPanel(bpy.types.Panel):
 				col.prop(obj.bfg, "light_material", "")
 			if hasattr(obj.data, "materials") or len(context.selected_objects) > 1: # don't hide if multiple selections
 				col.operator(RefreshMaterials.bl_idname, RefreshMaterials.bl_label, icon='MATERIAL')
+			# if this object is part of a brush entity (i.e. a child of one), show the brush entity properties
+			if obj.parent and obj.parent.bfg.type == 'BRUSH_ENTITY':
+				self.draw_object_label(col, obj.parent)
+				self.draw_entity_properties(context, col, obj.parent)
 
 class UvPanel(bpy.types.Panel):
 	bl_label = "UV"
@@ -1951,6 +1973,7 @@ class BfgObjectPropertyGroup(bpy.types.PropertyGroup):
 		('3D_ROOM', "3D Room", ""),
 		('BRUSH', "Brush", ""),
 		('ENTITY', "Entity", ""),
+		('BRUSH_ENTITY', "Brush Entity", ""),
 		('STATIC_MODEL', "Static Model", "")
 	], name="BFG Forge Object Type", default='NONE')
 	
