@@ -1500,6 +1500,7 @@ class FlipUV(bpy.types.Operator):
 	def execute(self, context):
 		prev_area = context.area.type
 		context.area.type = 'IMAGE_EDITOR'
+		bpy.ops.uv.select_all(action='SELECT')
 		if self.axis == 'HORIZONTAL':
 			bpy.ops.transform.resize(value=(-1, 1, 1))
 		elif self.axis == 'VERTICAL':
@@ -1521,6 +1522,7 @@ class NudgeUV(bpy.types.Operator):
 	def execute(self, context):
 		prev_area = context.area.type
 		context.area.type = 'IMAGE_EDITOR'
+		bpy.ops.uv.select_all(action='SELECT')
 		if self.dir == 'LEFT':
 			bpy.ops.transform.translate(value=(context.scene.bfg.uv_nudge_increment, 0, 0))
 		elif self.dir == 'RIGHT':
@@ -1563,6 +1565,7 @@ class RotateUV(bpy.types.Operator):
 	def execute(self, context):
 		prev_area = context.area.type
 		context.area.type = 'IMAGE_EDITOR'
+		bpy.ops.uv.select_all(action='SELECT')
 		degrees = context.scene.bfg.uv_rotate_degrees
 		if self.dir == 'RIGHT':
 			degrees *= -1
