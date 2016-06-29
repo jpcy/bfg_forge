@@ -25,7 +25,7 @@ bl_info = {
 import bpy, bpy.utils.previews, bmesh, glob, json, math, os, time
 from bpy_extras.io_utils import ExportHelper
 from collections import OrderedDict
-from mathutils import Euler, Vector
+from mathutils import Euler, Matrix, Vector
 
 # used when creating light and entities, and exporting
 _scale_to_game = 64.0
@@ -1128,6 +1128,72 @@ def add_all_materials(obj):
 			obj.data.materials.append(m)
 		i += 1
 		
+def build_map(context, rooms, brushes, map_name):
+	scene = context.scene
+
+	# get all the temp bool objects from the last time this map was built
+	bool_objects = [obj for obj in bpy.data.objects if obj.name.startswith(map_name + "_bool")]
+				
+	# create map object
+	# if a map object already exists, its old mesh is removed
+	set_object_mode_and_clear_selection()
+	old_map_mesh = None
+	map_mesh_name = map_name + "_mesh"
+	if map_mesh_name in bpy.data.meshes:
+		old_map_mesh = bpy.data.meshes[map_mesh_name]
+		old_map_mesh.name = "_worldspawn_old"
+	if len(rooms) > 0:
+		# first room: generate the mesh and transform to worldspace
+		if rooms[0].bfg.type == '3D_ROOM' and rooms[0].bfg.auto_unwrap:
+			auto_unwrap(rooms[0].data)
+		map_mesh = rooms[0].to_mesh(scene, True, 'PREVIEW')
+		map_mesh.name = map_mesh_name
+		map_mesh.transform(rooms[0].matrix_world)
+		
+		# 2D rooms are always unwrapped (the to_mesh result, not the object - it's just a plane)
+		if rooms[0].bfg.type == '2D_ROOM':
+			auto_unwrap(map_mesh)
+	else:
+		map_mesh = bpy.data.meshes.new(map_mesh_name)
+	if map_name in bpy.data.objects:
+		map = bpy.data.objects[map_name]
+		map.data = map_mesh
+	else:
+		map = bpy.data.objects.new(map_name, map_mesh)
+		scene.objects.link(map)
+	if old_map_mesh:
+		bpy.data.meshes.remove(old_map_mesh)
+	map.layers[scene.active_layer] = True
+	scene.objects.active = map
+	map.select = True
+	map.hide = False
+				
+	# combine rooms
+	if len(rooms) > 0:
+		flip_object_normals(map)
+	for i, room in enumerate(rooms):
+		if i > 0:
+			# not the first room: bool union with existing mesh
+			apply_boolean(map, room, 'UNION', flip_normals=True)
+	map.select = True
+	if len(rooms) > 0:
+		flip_object_normals(map)
+		
+	# combine brushes
+	for brush in brushes:
+		apply_boolean(map, brush, 'UNION')
+		
+	link_active_object_to_group("map")
+	move_object_to_layer(map, scene.bfg.map_layer)
+	map.hide_select = True
+	bpy.ops.object.select_all(action='DESELECT')
+	
+	# cleanup temp bool objects
+	for obj in bool_objects:
+		mesh = obj.data
+		bpy.data.objects.remove(obj)
+		bpy.data.meshes.remove(mesh)
+		
 class AddRoom(bpy.types.Operator):
 	bl_idname = "scene.add_room"
 	bl_label = "Add Room"
@@ -1273,81 +1339,28 @@ class BuildMap(bpy.types.Operator):
 	bool_op = bpy.props.StringProperty(name="bool_op", default='INTERSECT')
 
 	def execute(self, context):
-		scene = context.scene
-		
-		# get rooms and brushes
-		room_list = []
-		brush_list = []
+		# worldspawn
+		rooms = []
+		brushes = []
 		for obj in context.scene.objects:
+			if obj.parent and obj.parent.bfg.type == 'BRUSH_ENTITY':
+				continue # ignore children of brush entities
 			if obj.bfg.type in ['2D_ROOM', '3D_ROOM']:
-				room_list.append(obj)
+				rooms.append(obj)
 			elif obj.bfg.type == 'BRUSH':
-				brush_list.append(obj)
+				brushes.append(obj)
 					
-		# get all the temp bool objects from the last time the map was built
-		bool_objects = [obj for obj in bpy.data.objects if obj.name.startswith("_bool")]
-					
-		# create map object
-		# if a map object already exists, its old mesh is removed
-		set_object_mode_and_clear_selection()
-		old_map_mesh = None
-		map_name = "_map"
-		map_mesh_name = map_name + "_mesh"
-		if map_mesh_name in bpy.data.meshes:
-			old_map_mesh = bpy.data.meshes[map_mesh_name]
-			old_map_mesh.name = "map_old"
-		if len(room_list) > 0:
-			# first room: generate the mesh and transform to worldspace
-			if room_list[0].bfg.type == '3D_ROOM' and room_list[0].bfg.auto_unwrap:
-				auto_unwrap(room_list[0].data)
-			map_mesh = room_list[0].to_mesh(scene, True, 'PREVIEW')
-			map_mesh.name = map_mesh_name
-			map_mesh.transform(room_list[0].matrix_world)
-			
-			# 2D rooms are always unwrapped (the to_mesh result, not the object - it's just a plane)
-			if room_list[0].bfg.type == '2D_ROOM':
-				auto_unwrap(map_mesh)
-		else:
-			map_mesh = bpy.data.meshes.new(map_mesh_name)
-		if map_name in bpy.data.objects:
-			map = bpy.data.objects[map_name]
-			map.data = map_mesh
-		else:
-			map = bpy.data.objects.new(map_name, map_mesh)
-			scene.objects.link(map)
-		if old_map_mesh:
-			bpy.data.meshes.remove(old_map_mesh)
-		map.layers[scene.active_layer] = True
-		scene.objects.active = map
-		map.select = True
-		map.hide = False
-					
-		# combine rooms
-		if len(room_list) > 0:
-			flip_object_normals(map)
-		for i, room in enumerate(room_list):
-			if i > 0:
-				# not the first room: bool union with existing mesh
-				apply_boolean(map, room, 'UNION', flip_normals=True)
-		map.select = True
-		if len(room_list) > 0:
-			flip_object_normals(map)
-			
-		# combine brushes
-		for brush in brush_list:
-			apply_boolean(map, brush, 'UNION')
-			
-		link_active_object_to_group("worldspawn")
-		move_object_to_layer(map, scene.bfg.map_layer)
-		map.hide_select = True
-		bpy.ops.object.select_all(action='DESELECT')
+		build_map(context, rooms, brushes, "_worldspawn")
 		
-		# cleanup temp bool objects
-		for obj in bool_objects:
-			mesh = obj.data
-			bpy.data.objects.remove(obj)
-			bpy.data.meshes.remove(mesh)
-
+		# brush entities
+		for obj in context.scene.objects:
+			if obj.bfg.type == 'BRUSH_ENTITY':
+				brushes = []
+				for child in obj.children:
+					if child.bfg.type == 'BRUSH':
+						brushes.append(child)
+				if len(brushes) > 0:
+					build_map(context, [], brushes, "_" + obj.name)
 		return {'FINISHED'}
 		
 ################################################################################
@@ -1586,11 +1599,12 @@ class ExportMap(bpy.types.Operator, ExportHelper):
 	filename_ext = ".json"
 	indent = bpy.props.BoolProperty(name="Indent", default=False)
 	
-	def create_primitive(self, context, obj, index):
+	def create_primitive(self, context, obj, obj_transform, index):
 		# need a temp mesh to store the result of to_mesh and a temp object for mesh operator
 		temp_mesh = obj.to_mesh(context.scene, True, 'PREVIEW')
 		temp_mesh.name = "_export_mesh"
-		temp_mesh.transform(obj.matrix_world)
+		if obj_transform:
+			temp_mesh.transform(obj_transform)
 		temp_obj = bpy.data.objects.new("_export_obj", temp_mesh)
 		context.scene.objects.link(temp_obj)
 		temp_obj.select = True
@@ -1662,60 +1676,89 @@ class ExportMap(bpy.types.Operator, ExportHelper):
 		return prim
 		
 	def execute(self, context):
-		if not "worldspawn" in bpy.data.groups:
-			self.report({'ERROR'}, "No worldspawn group found. Either build the map or create a group named \"worldspawn\" and link an object to it.")
-		else:
-			set_object_mode_and_clear_selection()
-			data = OrderedDict()
-			data["version"] = 3
-			entities = data["entities"] = []
-			entity_index = 0
-			
-			# write worldspawn
-			worldspawn = OrderedDict()
-			worldspawn["entity"] = entity_index
-			worldspawn["classname"] = "worldspawn"
-			primitives = worldspawn["primitives"] = []
-			for i, obj in enumerate(bpy.data.groups["worldspawn"].objects):
-				primitives.append(self.create_primitive(context, obj, i))
-			entities.append(worldspawn)
-			entity_index += 1
-			
-			# write the rest of the entities
-			for obj in context.scene.objects:
-				if obj.bfg.type in ['BRUSH_ENTITY', 'ENTITY', 'STATIC_MODEL'] or obj.type == 'LAMP':
-					ent = OrderedDict()
-					ent["entity"] = entity_index
-					ent["classname"] = "light" if obj.type == 'LAMP' else obj.bfg.classname
-					ent["name"] = obj.name
-					ent["origin"] = tuple_to_float_string(obj.location * _scale_to_game)
-					if obj.bfg.type in ['BRUSH_ENTITY','ENTITY']:
-						if obj.rotation_euler.z != 0.0:
-							ent["angle"] = ftos(math.degrees(obj.rotation_euler.z))
-						for prop in obj.game.properties:
-							if prop.value != "":
-								if prop.name.startswith("inherited_"): # remove the "inherited_" prefix
-									ent[prop.name[len("inherited_"):]] = prop.value
-								else:
-									ent[prop.name] = prop.value
-					elif obj.bfg.type == 'STATIC_MODEL':
-						ent["model"] = obj.bfg.entity_model.replace("\\", "/")
-						angles = obj.rotation_euler
-						rot = Euler((-angles[0], -angles[1], -angles[2]), 'XYZ').to_matrix()
-						ent["rotation"] = "%s %s %s" % (tuple_to_float_string(rot[0]), tuple_to_float_string(rot[1]), tuple_to_float_string(rot[2]))
-					elif obj.type == 'LAMP':
-						ent["light_center"] = "0 0 0"
-						radius = ftos(obj.data.distance * _scale_to_game)
-						ent["light_radius"] = "%s %s %s" % (radius, radius, radius)
-						ent["_color"] = tuple_to_float_string(obj.data.color)
-						ent["nospecular"] = "%d" % 0 if obj.data.use_specular else 1
-						ent["nodiffuse"] = "%d" % 0 if obj.data.use_diffuse else 1
-						if obj.bfg.light_material != "default":
-							ent["texture"] = obj.bfg.light_material
-					entities.append(ent)
-					entity_index += 1
-			with open(self.filepath, 'w') as f:
-				json.dump(data, f, indent="\t" if self.indent else None)
+		set_object_mode_and_clear_selection()
+		data = OrderedDict()
+		data["version"] = 3
+		entities = data["entities"] = []
+		entity_index = 0
+		
+		# write worldspawn
+		worldspawn = OrderedDict()
+		worldspawn["entity"] = entity_index
+		worldspawn["classname"] = "worldspawn"
+		primitives = worldspawn["primitives"] = []
+		primitive_index = 0
+		# write the "build map" output
+		built_obj = context.scene.objects.get("_worldspawn")
+		if built_obj:
+			primitives.append(self.create_primitive(context, built_obj, built_obj.matrix_world, primitive_index))
+			primitive_index += 1
+		# write plain mesh objects
+		# except for children of brush entities and objects in the "map" group, those are handled elsewhere
+		for obj in context.scene.objects:
+			if obj.parent and obj.parent.bfg.type == 'BRUSH_ENTITY':
+				continue
+			map_group = bpy.data.groups.get("map")
+			if map_group and obj.name in map_group.objects:
+				continue
+			if obj.bfg.type == 'NONE' and obj.type == 'MESH':
+				primitives.append(self.create_primitive(context, obj, obj.matrix_world, primitive_index))
+				primitive_index += 1
+		entities.append(worldspawn)
+		entity_index += 1
+		
+		# write the rest of the entities
+		for obj in context.scene.objects:
+			if obj.bfg.type in ['BRUSH_ENTITY', 'ENTITY', 'STATIC_MODEL'] or obj.type == 'LAMP':
+				ent = OrderedDict()
+				ent["entity"] = entity_index
+				ent["classname"] = "light" if obj.type == 'LAMP' else obj.bfg.classname
+				ent["name"] = obj.name
+				ent["origin"] = tuple_to_float_string(obj.location * _scale_to_game)
+				if obj.bfg.type in ['BRUSH_ENTITY','ENTITY']:
+					if obj.rotation_euler.z != 0.0:
+						ent["angle"] = ftos(math.degrees(obj.rotation_euler.z))
+					for prop in obj.game.properties:
+						if prop.value != "":
+							if prop.name.startswith("inherited_"): # remove the "inherited_" prefix
+								ent[prop.name[len("inherited_"):]] = prop.value
+							else:
+								ent[prop.name] = prop.value
+					# brush entity primitives
+					if obj.bfg.type == 'BRUSH_ENTITY' and len(obj.children) > 0: # warn if brush entity has no children?
+						ent["model"] = obj.name
+						primitives = ent["primitives"] = []
+						primitive_index = 0
+						# find the corresponding "build map" output for this brush entity
+						built_obj = context.scene.objects.get("_" + obj.name)
+						if built_obj:
+							# geometry must be exported in object space
+							primitives.append(self.create_primitive(context, built_obj, Matrix.Translation(-obj.location) * built_obj.matrix_world, primitive_index))
+							primitive_index += 1
+						# handle plain mesh object children
+						for child in obj.children:
+							if child.bfg.type == 'NONE' and obj.type == 'MESH':
+								# geometry must be exported in object space
+								primitives.append(self.create_primitive(context, child, Matrix.Translation(-obj.location) * child.matrix_world, primitive_index))
+								primitive_index += 1
+				elif obj.bfg.type == 'STATIC_MODEL':
+					ent["model"] = obj.bfg.entity_model.replace("\\", "/")
+					angles = obj.rotation_euler
+					rot = Euler((-angles[0], -angles[1], -angles[2]), 'XYZ').to_matrix()
+					ent["rotation"] = "%s %s %s" % (tuple_to_float_string(rot[0]), tuple_to_float_string(rot[1]), tuple_to_float_string(rot[2]))
+				elif obj.type == 'LAMP':
+					ent["light_center"] = "0 0 0"
+					radius = ftos(obj.data.distance * _scale_to_game)
+					ent["light_radius"] = "%s %s %s" % (radius, radius, radius)
+					ent["_color"] = tuple_to_float_string(obj.data.color)
+					ent["nospecular"] = "%d" % 0 if obj.data.use_specular else 1
+					ent["nodiffuse"] = "%d" % 0 if obj.data.use_diffuse else 1
+					if obj.bfg.light_material != "default":
+						ent["texture"] = obj.bfg.light_material
+				entities.append(ent)
+				entity_index += 1
+		with open(self.filepath, 'w') as f:
+			json.dump(data, f, indent="\t" if self.indent else None)
 		return {'FINISHED'}
 	
 def menu_func_export(self, context):
