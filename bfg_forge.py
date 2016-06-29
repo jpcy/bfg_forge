@@ -490,37 +490,37 @@ def get_or_create_active_material(context):
 		return create_material(context.scene.bfg.material_decls[bfg.active_material_decl])
 	return None
 	
+def assign_material(obj, mat, where='ALL'):
+	if obj.bfg.type == '2D_ROOM':
+		if where == 'CEILING' or where == 'ALL':
+			obj.bfg.ceiling_material = mat.name
+		if where == 'WALL' or where == 'ALL':
+			obj.bfg.wall_material = mat.name
+		if where == 'FLOOR' or where == 'ALL':
+			obj.bfg.floor_material = mat.name
+		update_room_plane_materials(obj)
+	else:
+		if len(obj.data.materials) == 1:
+			# one slot: easy, just reassign
+			obj.data.materials[0] = mat
+		else:
+			obj.data.materials.clear()
+			obj.data.materials.append(mat)
+			
+			# there was more than one material slot on this object
+			# need to set material_index on all faces to 0
+			bm = bmesh.new()
+			bm.from_mesh(obj.data)
+			for f in bm.faces:
+				f.material_index = 0
+			bm.to_mesh(obj.data)
+			bm.free()
+			
 class AssignMaterial(bpy.types.Operator):
 	"""Assign the material to the selected objects or object faces"""
 	bl_idname = "scene.assign_material"
 	bl_label = "Assign"
 	where = bpy.props.StringProperty(name="where", default='ALL')
-	
-	def assign_to_object(self, obj, mat):
-		if obj.bfg.type == '2D_ROOM':
-			if self.where == 'CEILING' or self.where == 'ALL':
-				obj.bfg.ceiling_material = mat.name
-			if self.where == 'WALL' or self.where == 'ALL':
-				obj.bfg.wall_material = mat.name
-			if self.where == 'FLOOR' or self.where == 'ALL':
-				obj.bfg.floor_material = mat.name
-			update_room_plane_materials(obj)
-		else:
-			if len(obj.data.materials) == 1:
-				# one slot: easy, just reassign
-				obj.data.materials[0] = mat
-			else:
-				obj.data.materials.clear()
-				obj.data.materials.append(mat)
-				
-				# there was more than one material slot on this object
-				# need to set material_index on all faces to 0
-				bm = bmesh.new()
-				bm.from_mesh(obj.data)
-				for f in bm.faces:
-					f.material_index = 0
-				bm.to_mesh(obj.data)
-				bm.free()
 	
 	def execute(self, context):
 		obj = context.active_object
@@ -573,7 +573,7 @@ class AssignMaterial(bpy.types.Operator):
 		else:
 			for s in context.selected_objects:
 				if hasattr(s.data, "materials"):
-					self.assign_to_object(s, mat)
+					assign_material(s, mat)
 		return {'FINISHED'}
 		
 def refresh_selected_objects_materials(context):
@@ -862,12 +862,21 @@ class AddEntity(bpy.types.Operator):
 			create_object_entity_properties(context, entity)
 			
 			# parent selected objects to this brush entity, and link them to the "entities" group
+			# if there is a editor_material for this entity, assign that material to the selected objects
 			if obj.bfg.type == 'BRUSH_ENTITY':
 				group = bpy.data.groups["entities"]
+				mat = None
+				mat_name = entity.get_dict_value("editor_material")
+				if mat_name:
+					mat_decl = context.scene.bfg.material_decls.get(mat_name)
+					if mat_decl:
+						mat = create_material(mat_decl)
 				for s in selected_objects:
 					s.location -= obj.location
 					s.parent = obj
 					group.objects.link(s)
+					if mat:
+						assign_material(s, mat)
 		return {'FINISHED'}
 		
 class ShowEntityDescription(bpy.types.Operator):
