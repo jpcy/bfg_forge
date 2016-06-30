@@ -947,6 +947,75 @@ class ShowEntityPropertyDescription(bpy.types.Operator):
 	def execute(self, context):
 		return {'FINISHED'}
 		
+class NewCustomEntityProperty(bpy.types.Operator):
+	"""Create a new custom entity property"""
+	bl_idname = "scene.new_custom_entity_property"
+	bl_label = "New Entity Property"
+	bl_options = {'REGISTER','UNDO','INTERNAL'}
+	name = bpy.props.StringProperty(name="Name", default="")
+	value = bpy.props.StringProperty(name="Value", default="")
+	
+	def invoke(self, context, event):
+		return context.window_manager.invoke_props_dialog(self)
+
+	def execute(self, context):
+		if self.name == "":
+			return {'CANCELLED'}
+		obj = context.active_object
+		# handle brush entities. the parent owns the properties
+		old_active = None
+		if obj.parent and obj.parent.bfg.type == 'BRUSH_ENTITY':
+			old_active = context.scene.objects.active
+			obj = obj.parent
+			context.scene.objects.active = obj
+		# check if a normal property already exists with this name
+		prop = obj.game.properties.get(self.name)
+		if not prop:
+			# check if an inherited property already exists with this name
+			prop = obj.game.properties.get("inherited_" + self.name)
+			if prop:
+				# show inherited properties
+				context.scene.bfg.show_inherited_entity_props = True
+			else:
+				# check if a custom property already exists with this name
+				prop_name = "custom_" + self.name
+				prop = obj.game.properties.get(prop_name)
+				if not prop:
+					# finally, create the property
+					bpy.ops.object.game_property_new(type='STRING', name=prop_name)
+					prop = obj.game.properties[prop_name]
+		# whether the property has been created, or already exists, set the value	
+		prop.value = self.value
+		# restore active object
+		if old_active:
+			context.scene.objects.active = old_active
+		else:
+			context.scene.objects.active = obj # force ui refresh. game_property_new doesn't seem to trigger it.
+		return {'FINISHED'}
+		
+class RemoveCustomEntityProperty(bpy.types.Operator):
+	"""Remove a custom entity property"""
+	bl_idname = "scene.remove_custom_entity_property"
+	bl_label = "Remove Entity Property"
+	bl_options = {'REGISTER','UNDO','INTERNAL'}
+	name = bpy.props.StringProperty(default="")
+	
+	def execute(self, context):
+		obj = context.active_object
+		# handle brush entities. the parent owns the properties
+		old_active = None
+		if obj.parent and obj.parent.bfg.type == 'BRUSH_ENTITY':
+			old_active = context.scene.objects.active
+			obj = obj.parent
+			context.scene.objects.active = obj
+		prop_index = obj.game.properties.find(self.name)
+		if prop_index != -1:
+			bpy.ops.object.game_property_remove(index=prop_index)
+		# restore active object
+		if old_active:
+			context.scene.objects.active = old_active
+		return {'FINISHED'}
+		
 ################################################################################
 ## LIGHTS
 ################################################################################
@@ -1731,6 +1800,8 @@ class ExportMap(bpy.types.Operator, ExportHelper):
 						if prop.value != "":
 							if prop.name.startswith("inherited_"): # remove the "inherited_" prefix
 								ent[prop.name[len("inherited_"):]] = prop.value
+							elif prop.name.startswith("custom_"): # remove the "custom_" prefix
+								ent[prop.name[len("custom_"):]] = prop.value
 							else:
 								ent[prop.name] = prop.value
 					# brush entity primitives
@@ -1871,15 +1942,22 @@ class ObjectPanel(bpy.types.Panel):
 			is_inherited = prop.name.startswith("inherited_")
 			if not context.scene.bfg.show_inherited_entity_props and is_inherited:
 				continue # user doesn't want to see inherited props
+			is_custom = prop.name.startswith("custom_")
 			row = col.row(align=True)
 			name = prop.name
 			if is_inherited:
 				name = name[len("inherited_"):] # remove the prefix
+			elif is_custom:
+				name = name[len("custom_"):] # remove the prefix
 			row.label(name + ":")
 			row.prop(prop, "value", text="")
 			props = row.operator(ShowEntityPropertyDescription.bl_idname, "", icon='INFO')
 			props.classname = obj.bfg.classname
 			props.name = name
+			if is_custom:
+				# custom properties can be removed
+				row.operator(RemoveCustomEntityProperty.bl_idname, "", icon='X').name = prop.name
+		col.operator(NewCustomEntityProperty.bl_idname, NewCustomEntityProperty.bl_label, icon='ZOOMIN')
 
 	def draw(self, context):
 		obj = context.active_object
