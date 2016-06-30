@@ -1282,6 +1282,7 @@ class AddRoom(bpy.types.Operator):
 		bpy.ops.mesh.primitive_plane_add(radius=1)
 		bpy.ops.object.modifier_add(type='SOLIDIFY')
 		obj = context.active_object
+		obj.lock_scale = [False, False, True]
 		obj.modifiers[0].offset = 1
 		obj.modifiers[0].use_even_offset = True
 		obj.modifiers[0].use_flip_normals = True
