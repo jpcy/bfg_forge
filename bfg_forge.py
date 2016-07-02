@@ -14,13 +14,6 @@
 #
 #  You should have received a copy of the GNU General Public License
 #  along with this program.	 If not, see <http://www.gnu.org/licenses/>.
-
-bl_info = {
-	'name': 'BFG Forge',
-	'author': 'Jonathan Young',
-	'blender': (2, 75, 0),
-	'category': 'Game Engine'
-	}
 	
 import bpy, bpy.utils.previews, bmesh, glob, json, math, os, time
 from bpy_extras.io_utils import ExportHelper
@@ -2116,7 +2109,6 @@ class BfgObjectPropertyGroup(bpy.types.PropertyGroup):
 ################################################################################
 	
 def register():
-	bpy.utils.register_module(__name__)
 	bpy.types.INFO_MT_file_export.append(menu_func_export)
 	bpy.types.Scene.bfg = bpy.props.PointerProperty(type=BfgScenePropertyGroup)
 	bpy.types.Object.bfg = bpy.props.PointerProperty(type=BfgObjectPropertyGroup)
@@ -2133,7 +2125,6 @@ def register():
 	preview_collections["light"] = pcoll
 
 def unregister():
-	bpy.utils.unregister_module(__name__)
 	bpy.types.INFO_MT_file_export.remove(menu_func_export)
 	del bpy.types.Scene.bfg
 	del bpy.types.Object.bfg
