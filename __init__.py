@@ -27,19 +27,22 @@ bl_info = {
 # handle reloading
 if "bpy" in locals():
 	import imp
-	imp.reload(bfg_forge)
+	imp.reload(core)
+	imp.reload(export_map)
 else:
-	from . import bfg_forge
+	from . import core, export_map
 	
 import bpy
 	
 def register():
 	bpy.utils.register_module(__name__)
-	bfg_forge.register()
+	core.register()
+	export_map.register()
 
 def unregister():
 	bpy.utils.unregister_module(__name__)
-	bfg_forge.unregister()
+	core.unregister()
+	export_map.unregister()
 
 if __name__ == "__main__":
 	register()
