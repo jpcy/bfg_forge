@@ -558,7 +558,7 @@ class AssignMaterial(bpy.types.Operator):
 		else:
 			for s in context.selected_objects:
 				if hasattr(s.data, "materials"):
-					assign_material(s, mat)
+					assign_material(s, mat, self.where)
 		return {'FINISHED'}
 		
 def refresh_selected_objects_materials(context):
