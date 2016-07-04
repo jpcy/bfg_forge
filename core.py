@@ -1041,18 +1041,18 @@ def light_material_preview_items(self, context):
 	lights.append(("default", "default", "default", 0, 0))
 	i = 1
 	for decl in context.scene.bfg.material_decls:
-		# material name must start with "lights" and its texture file must exists
-		if os.path.dirname(decl.name).startswith("lights") and decl.texture:
-			if decl.texture == "":
-				continue
-			filename = fs.find_image_file_path(decl.texture)
-			if not filename:
-				continue
+		# material name must start with "lights" and have a texture
+		if os.path.dirname(decl.name).startswith("lights") and decl.texture != "":
+			preview = None
 			if decl.texture in pcoll: # workaround blender bug, pcoll.load is supposed to return cached preview if name already exists
 				preview = pcoll[decl.texture]
 			else:
-				preview = pcoll.load(decl.texture, filename, 'IMAGE')
-			lights.append((decl.name, os.path.basename(decl.name), decl.name, preview.icon_id, i))
+				filename = fs.find_image_file_path(decl.texture)
+				if filename:
+					preview = pcoll.load(decl.texture, filename, 'IMAGE')
+				elif context.scene.bfg.hide_bad_materials:
+					continue # hide if the texture file is missing
+			lights.append((decl.name, os.path.basename(decl.name), decl.name, preview.icon_id if preview else 0, i))
 			i += 1
 	lights.sort()
 	pcoll.lights = lights
@@ -1871,6 +1871,7 @@ def update_show_entity_names(self, context):
 			
 def update_hide_bad_materials(self, context):
 	preview_collections["material"].force_refresh = True
+	preview_collections["light"].needs_refresh = True
 	
 def update_shadeless_materials(self, context):
 	for mat in bpy.data.materials:
