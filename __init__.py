@@ -29,8 +29,9 @@ if "bpy" in locals():
 	import imp
 	imp.reload(core)
 	imp.reload(export_map)
+	imp.reload(lexer)
 else:
-	from . import core, export_map
+	from . import core, export_map, lexer
 	
 import bpy
 	
