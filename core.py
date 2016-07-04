@@ -1442,12 +1442,12 @@ def auto_unwrap(mesh, obj_location=Vector(), obj_scale=Vector((1, 1, 1))):
 	for f in bm.faces:
 		if bpy.context.mode == 'EDIT_MESH' and not f.select:
 			continue # ignore faces that aren't selected in edit mode
+		texture_size = (128, 128)
 		mat = mesh.materials[f.material_index]
-		if len(mat.texture_slots) == 0:
-			continue
-		tex = bpy.data.textures[mat.texture_slots[0].name]
-		if not hasattr(tex, "image") or not tex.image: # if the texture type isn't set to "Image or Movie", the image attribute won't exist
-			continue
+		if len(mat.texture_slots) > 0:
+			tex = bpy.data.textures[mat.texture_slots[0].name]
+			if hasattr(tex, "image") and tex.image: # if the texture type isn't set to "Image or Movie", the image attribute won't exist
+				texture_size = tex.image.size
 		nX = f.normal.x
 		nY = f.normal.y
 		nZ = f.normal.z
@@ -1474,8 +1474,8 @@ def auto_unwrap(mesh, obj_location=Vector(), obj_scale=Vector((1, 1, 1))):
 		if face_direction == 'z':
 			if f.normal.z < 0:
 				face_direction = '-z'
-		scale_x = _scale_to_game / tex.image.size[0] * (1.0 / bpy.context.scene.bfg.global_uv_scale)
-		scale_y = _scale_to_game / tex.image.size[1] * (1.0 / bpy.context.scene.bfg.global_uv_scale)
+		scale_x = _scale_to_game / texture_size[0] * (1.0 / bpy.context.scene.bfg.global_uv_scale)
+		scale_y = _scale_to_game / texture_size[1] * (1.0 / bpy.context.scene.bfg.global_uv_scale)
 		for l in f.loops:
 			luv = l[uv_layer]
 			if luv.pin_uv is not True:
