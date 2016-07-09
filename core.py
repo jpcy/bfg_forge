@@ -500,7 +500,7 @@ def create_model_object(context, filename, relative_path):
 	if extension.lower() == ".lwo":
 		if not hasattr(bpy.types, "IMPORT_SCENE_OT_lwo"):
 			return (None, "LightWave Object (.lwo) import addon not enabled")
-	else:
+	elif extension.lower() not in [".dae"]:
 		return (None, "Model \"%s\" uses unsupported extension \"%s\"" % (filename, extension))
 	
 	set_object_mode_and_clear_selection()
@@ -515,20 +515,25 @@ def create_model_object(context, filename, relative_path):
 		obj = bpy.data.objects.new(os.path.splitext(os.path.basename(relative_path))[0], mesh)
 		context.scene.objects.link(obj)
 	else:
-		# lwo importer doesn't select or make active the object in creates...
-		# need to diff scene objects before and after import to find it
-		obj_names = []
-		for obj in context.scene.objects:
-			obj_names.append(obj.name)
-		bpy.ops.import_scene.lwo(filepath=filename, USE_EXISTING_MATERIALS=True)
-		imported_obj = None
-		for obj in context.scene.objects:
-			if not obj.name in obj_names:
-				imported_obj = obj
-				break
-		if not imported_obj:
-			return (None, "Importing \"%s\" failed" % filename) # import must have failed
-		obj = imported_obj
+		obj = None
+		if extension.lower() == ".dae":
+			bpy.ops.wm.collada_import(filepath=filename)
+			obj = context.active_object
+		elif extension.lower() == ".lwo":
+			# lwo importer doesn't select or make active the object in creates...
+			# need to diff scene objects before and after import to find it
+			obj_names = []
+			for obj in context.scene.objects:
+				obj_names.append(obj.name)
+			bpy.ops.import_scene.lwo(filepath=filename, USE_EXISTING_MATERIALS=True)
+			imported_obj = None
+			for obj in context.scene.objects:
+				if not obj.name in obj_names:
+					imported_obj = obj
+					break
+			if not imported_obj:
+				return (None, "Importing \"%s\" failed" % filename) # import must have failed
+			obj = imported_obj
 		# fixup material names by removing filename extensions.
 		# e.g. "models/items/rocket_ammo/rocket_large.tga" should be "models/items/rocket_ammo/rocket_large"
 		for i, mat in enumerate(obj.data.materials):
@@ -971,7 +976,7 @@ class AddStaticModel(bpy.types.Operator):
 	bl_idname = "scene.add_static_model"
 	bl_label = "Add Static Model"
 	filepath = bpy.props.StringProperty(default="", options={'HIDDEN', 'SKIP_SAVE'})
-	filter_glob = bpy.props.StringProperty(default="*.lwo", options={'HIDDEN'})
+	filter_glob = bpy.props.StringProperty(default="*.dae;*.lwo", options={'HIDDEN'})
 	
 	@classmethod
 	def poll(cls, context):
