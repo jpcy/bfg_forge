@@ -534,11 +534,21 @@ def create_model_object(context, filename, relative_path):
 			if not imported_obj:
 				return (None, "Importing \"%s\" failed" % filename) # import must have failed
 			obj = imported_obj
-		# fixup material names by removing filename extensions.
-		# e.g. "models/items/rocket_ammo/rocket_large.tga" should be "models/items/rocket_ammo/rocket_large"
+		# fixup material names
 		for i, mat in enumerate(obj.data.materials):
 			(name, ext) = os.path.splitext(mat.name)
+			fix_material = False
+			if extension.lower() == ".dae":
+				# fix collada mangling
+				name = name.replace("_", "/")
+				if name.endswith("-material"):
+					name = name[:-len("-material")]
+				fix_material = True
 			if ext != "":
+				# remove filename extensions
+				# e.g. "models/items/rocket_ammo/rocket_large.tga" should be "models/items/rocket_ammo/rocket_large"
+				fix_material = True
+			if fix_material:
 				# if a material with the fixed name already exists, use it
 				# otherwise rename this one
 				new_mat = bpy.data.materials.get(name)
