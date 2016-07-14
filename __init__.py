@@ -29,9 +29,10 @@ if "bpy" in locals():
 	import imp
 	imp.reload(core)
 	imp.reload(export_map)
+	imp.reload(import_md5mesh)
 	imp.reload(lexer)
 else:
-	from . import core, export_map, lexer
+	from . import core, export_map, import_md5mesh, lexer
 	
 import bpy
 	

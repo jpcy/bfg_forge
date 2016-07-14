@@ -16,7 +16,7 @@
 #  along with this program.	 If not, see <http://www.gnu.org/licenses/>.
 	
 import bpy, bpy.utils.previews, bmesh, glob, math, os, time
-from . import lexer
+from . import import_md5mesh, lexer
 from mathutils import Vector
 
 # used when creating light and entities, and exporting
@@ -500,7 +500,7 @@ def create_model_object(context, filename, relative_path):
 	if extension.lower() == ".lwo":
 		if not hasattr(bpy.types, "IMPORT_SCENE_OT_lwo"):
 			return (None, "LightWave Object (.lwo) import addon not enabled")
-	elif extension.lower() not in [".dae"]:
+	elif extension.lower() not in [".dae", ".md5mesh"]:
 		return (None, "Model \"%s\" uses unsupported extension \"%s\"" % (filename, extension))
 	
 	set_object_mode_and_clear_selection()
@@ -534,6 +534,9 @@ def create_model_object(context, filename, relative_path):
 			if not imported_obj:
 				return (None, "Importing \"%s\" failed" % filename) # import must have failed
 			obj = imported_obj
+		elif extension.lower() == ".md5mesh":
+			import_md5mesh.read_md5mesh(filename)
+			obj = context.active_object
 		# fixup material names
 		for i, mat in enumerate(obj.data.materials):
 			(name, ext) = os.path.splitext(mat.name)
@@ -986,7 +989,7 @@ class AddStaticModel(bpy.types.Operator):
 	bl_idname = "scene.add_static_model"
 	bl_label = "Add Static Model"
 	filepath = bpy.props.StringProperty(default="", options={'HIDDEN', 'SKIP_SAVE'})
-	filter_glob = bpy.props.StringProperty(default="*.dae;*.lwo", options={'HIDDEN'})
+	filter_glob = bpy.props.StringProperty(default="*.dae;*.lwo;*.md5mesh", options={'HIDDEN'})
 	
 	@classmethod
 	def poll(cls, context):
