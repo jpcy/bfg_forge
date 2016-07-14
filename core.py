@@ -579,6 +579,7 @@ def create_model_object(context, filename, relative_path):
 	obj.scale = [_scale_to_blender, _scale_to_blender, _scale_to_blender]
 	obj.lock_scale = [True, True, True]
 	refresh_selected_objects_materials(context)
+	bpy.ops.object.shade_smooth()
 	return (obj, None)
 		
 ################################################################################
