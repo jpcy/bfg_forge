@@ -24,10 +24,10 @@ def read_md5mesh(path):
 	fh = open(path, "r")
 	md5mesh = fh.readlines()
 	fh.close()
-	ms = do_joints(md5mesh, j_re, e_re)
+	ms, z_offset = do_joints(md5mesh, j_re, e_re)
 	pairs = []
 	while md5mesh:
-		mat_name, bm = do_mesh(md5mesh, s_re, v_re, t_re, w_re, e_re, n_re, ms)
+		mat_name, bm = do_mesh(md5mesh, s_re, v_re, t_re, w_re, e_re, n_re, ms, z_offset)
 		pairs.append((mat_name, bm))
 		skip_until(m_re, md5mesh)
 	for mat_name, bm in pairs:
@@ -45,7 +45,7 @@ def read_md5mesh(path):
 		mesh_o.material_slots[-1].material = mat
 		bpy.ops.object.mode_set()
 
-def do_mesh(md5mesh, s_re, v_re, t_re, w_re, e_re, n_re, ms):
+def do_mesh(md5mesh, s_re, v_re, t_re, w_re, e_re, n_re, ms, z_offset):
 	bm = bmesh.new()
 	mat_name = gather(s_re, n_re, md5mesh)[0][0]
 	vs, ts, ws = gather_multi([v_re, t_re, w_re], e_re, md5mesh)
@@ -56,6 +56,7 @@ def do_mesh(md5mesh, s_re, v_re, t_re, w_re, e_re, n_re, ms):
 		w0 = ws[wt]
 		mtx = ms[int(w0[1])][1]
 		xyz = mtx * mu.Vector(map(float, w0[3:]))
+		xyz[2] += z_offset
 		new_v = bm.verts.new(xyz)
 		bm.verts.index_update()
 		for i in ws[wt:wt+nwt]:
@@ -82,13 +83,16 @@ def do_joints(md5mesh, j_re, e_re):
 	for i in range(len(jdata)):
 		joints[i] = jdata[i]
 	ms = []
+	min_z = 0
 	for j in joints.values():
 		j_name = j[0]
 		tx, ty, tz, rx, ry, rz = [float(a) for a in j[2:]]
 		quat = -mu.Quaternion(restore_quat(rx, ry, rz))
 		mtx = mu.Matrix.Translation((tx, ty, tz)) * quat.to_matrix().to_4x4()
 		ms.append((j_name, mtx))
-	return ms
+		if tz < min_z:
+			min_z = tz
+	return ms, -min_z
 
 def gather(regex, end_regex, ls):
 	return gather_multi([regex], end_regex, ls)[0]
