@@ -599,6 +599,11 @@ class EntityPropGroup(bpy.types.PropertyGroup):
 		if kvp:
 			return kvp.value
 		return key_default
+		
+class ModelDefPropGroup(bpy.types.PropertyGroup):
+	# name property inherited
+	inherit = bpy.props.StringProperty()
+	mesh = bpy.props.StringProperty() # e.g. models/md5/monsters/zfat/zfat.md5mesh
 
 class ImportEntities(bpy.types.Operator):
 	bl_idname = "scene.import_entities"
@@ -613,10 +618,7 @@ class ImportEntities(bpy.types.Operator):
 			token = lex.parse_token()
 			if token == None:
 				break
-			if not token == "entityDef":
-				name = lex.parse_token() # name, sometimes opening brace
-				lex.skip_bracket_delimiter_section("{", "}", True if name == "{" else False)
-			else:
+			if token == "entityDef":
 				name = lex.parse_token()
 				if name in scene.bfg.entities:
 					entity = scene.bfg.entities[name]
@@ -646,6 +648,31 @@ class ImportEntities(bpy.types.Operator):
 							kvp = entity.dict.add()
 							kvp.name = key
 						kvp.value = lex.parse_token()
+			elif token == "model":
+				name = lex.parse_token()
+				model_def = scene.bfg.model_defs.get(name)
+				if not model_def:
+					model_def = scene.bfg.model_defs.add()
+					model_def.name = name
+				lex.expect_token("{")
+				num_required_closing = 1
+				while True:
+					token = lex.parse_token()
+					if token == None:
+						break
+					elif token == "{":
+						num_required_closing += 1
+					elif token == "}":
+						num_required_closing -= 1
+						if num_required_closing == 0:
+							break
+					elif token == "inherit":
+						model_def.inherit = lex.parse_token()
+					elif token == "mesh":
+						model_def.mesh = lex.parse_token()
+			else:
+				name = lex.parse_token() # name, sometimes opening brace
+				lex.skip_bracket_delimiter_section("{", "}", True if name == "{" else False)
 		print(" %d entities" % (num_entities_created + num_entities_updated))
 		return (num_entities_created, num_entities_updated)
 		
@@ -670,6 +697,20 @@ class ImportEntities(bpy.types.Operator):
 		wm.progress_end()
 		self.report({'INFO'}, "Imported %d entities, updated %d in %.2f seconds" % (self.num_entities_created, self.num_entities_updated, time.time() - start_time))
 		return {'FINISHED'}
+		
+# chase the model def mesh
+# e.g. entityDef monster_zombie_fat { "model" "monster_zombie_fat" }
+# model monster_zombie_fat { "mesh" "models/md5/monsters/zfat/zfat.md5mesh" }
+# and handle inherit/recursion
+def find_model_def_mesh(model):
+	model_def = bpy.context.scene.bfg.model_defs.get(model)
+	if model_def:
+		if model_def.mesh == "":
+			if model_def.inherit != "":
+				return find_model_def_mesh(model_def.inherit)
+		else:
+			return model_def.mesh
+	return None
 		
 def create_object_color_material():
 	name = "_object_color"
@@ -725,7 +766,8 @@ class AddEntity(bpy.types.Operator):
 			entity = context.scene.bfg.entities[ae]
 			entity_mins = entity.get_dict_value("editor_mins", "?")
 			entity_maxs = entity.get_dict_value("editor_maxs", "?")
-			if entity_mins == "?" or entity_maxs == "?":
+			model = entity.get_dict_value("model")
+			if (entity_mins == "?" or entity_maxs == "?") and not model:
 				# brush entity, create as empty
 				if not (active_object and active_object.bfg.type in ['NONE','BRUSH'] and len(selected_objects) > 0):
 					self.report({'ERROR'}, "Brush entities require a brush to be selected")
@@ -740,15 +782,23 @@ class AddEntity(bpy.types.Operator):
 				obj.bfg.type = 'BRUSH_ENTITY'
 			else:
 				# normal entity
-				model = entity.get_dict_value("model")
 				obj = None
 				if model: # create as mesh
-					fs = FileSystem()
-					filename = fs.find_file_path(model)
-					(obj, error_message) = create_model_object(context, filename, model)
-					if error_message:
-						self.report({'ERROR'}, error_message)
+					model = find_model_def_mesh(model) # handle "model" pointing to a model def, inheritance etc.
+					if model:
+						fs = FileSystem()
+						filename = fs.find_file_path(model)
+						if filename:
+							(obj, error_message) = create_model_object(context, filename, model)
+						else:
+							error_message = "Model %s not found" % model
+						if error_message:
+							self.report({'ERROR'}, error_message)
 				if not obj: # no model or create_model_object error: fallback to primitive
+					if entity_mins == "?" or entity_maxs == "?":
+						# need bounds
+						self.report({'ERROR'}, "Entity def %s is missing editor_mins and editor_maxs" % entity.name)
+						return {'CANCELLED'}
 					bpy.ops.mesh.primitive_cube_add()
 					obj = context.active_object
 					entity_color = entity.get_dict_value("editor_color", "0 0 1") # default to blue
@@ -1831,6 +1881,7 @@ class BfgScenePropertyGroup(bpy.types.PropertyGroup):
 	active_material_decl = bpy.props.EnumProperty(name="", items=material_decl_preview_items)
 	entities = bpy.props.CollectionProperty(type=EntityPropGroup)
 	active_entity = bpy.props.StringProperty(name="Active Entity", default="")
+	model_defs = bpy.props.CollectionProperty(type=ModelDefPropGroup)
 	global_uv_scale = bpy.props.FloatProperty(name="Global UV Scale", description="Scale Automatically unwrapped UVs by this amount", default=0.5, step=0.1, min=0.1, max=10)
 	uv_fit_repeat = bpy.props.FloatProperty(name="UV Fit Repeat", default=1.0, step=0.1, min=0.1, max=10)
 	uv_nudge_increment = bpy.props.FloatProperty(name="Nudge Increment", default=_scale_to_blender)
