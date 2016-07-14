@@ -511,32 +511,48 @@ def create_model_object(context, filename, relative_path):
 		if obj.bfg.entity_model == relative_path:
 			mesh = obj.data
 			break
+	model_obj_name = os.path.splitext(os.path.basename(relative_path))[0]
 	if mesh:
-		obj = bpy.data.objects.new(os.path.splitext(os.path.basename(relative_path))[0], mesh)
+		obj = bpy.data.objects.new(model_obj_name, mesh)
 		context.scene.objects.link(obj)
+		context.scene.objects.active = obj
 	else:
-		obj = None
+		# prep for diffing scene objects before and after import for consistency between importers
+		# e.g. lwo importer doesn't select or make active the object(s) in creates
+		obj_names = []
+		for obj in context.scene.objects:
+			obj_names.append(obj.name)
+		# import
 		if extension.lower() == ".dae":
 			bpy.ops.wm.collada_import(filepath=filename)
-			obj = context.active_object
 		elif extension.lower() == ".lwo":
-			# lwo importer doesn't select or make active the object in creates...
-			# need to diff scene objects before and after import to find it
-			obj_names = []
-			for obj in context.scene.objects:
-				obj_names.append(obj.name)
 			bpy.ops.import_scene.lwo(filepath=filename, USE_EXISTING_MATERIALS=True)
-			imported_obj = None
-			for obj in context.scene.objects:
-				if not obj.name in obj_names:
-					imported_obj = obj
-					break
-			if not imported_obj:
-				return (None, "Importing \"%s\" failed" % filename) # import must have failed
-			obj = imported_obj
 		elif extension.lower() == ".md5mesh":
 			import_md5mesh.read_md5mesh(filename)
+		# diff scene objects
+		# 0: error, 1: fine, >1: join objects
+		imported_objects = []
+		for obj in context.scene.objects:
+			if not obj.name in obj_names:
+				imported_objects.append(obj)
+		if len(imported_objects) == 0:
+			return (None, "Importing \"%s\" failed" % filename) # import must have failed
+		elif len(imported_objects) == 1:
+			# make sure the object is selected and active
+			imported_objects[0].select = True
+			context.scene.objects.active = imported_objects[0]
+		else:
+			# join objects
 			obj = context.active_object
+			bpy.ops.object.select_all(action='DESELECT')
+			for obj in imported_objects:
+				obj.select = True
+			context.scene.objects.active = imported_objects[0]
+			bpy.ops.object.join()
+			# fix names
+			context.scene.objects.active.name = model_obj_name
+			context.scene.objects.active.data.name = model_obj_name
+		obj = context.scene.objects.active
 		# fixup material names
 		for i, mat in enumerate(obj.data.materials):
 			(name, ext) = os.path.splitext(mat.name)
@@ -559,7 +575,6 @@ def create_model_object(context, filename, relative_path):
 					obj.data.materials[i] = new_mat
 				else:
 					mat.name = name
-	context.scene.objects.active = obj
 	obj.select = True
 	obj.bfg.entity_model = relative_path
 	obj.scale = [_scale_to_blender, _scale_to_blender, _scale_to_blender]
