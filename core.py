@@ -66,13 +66,12 @@ class FileSystem:
 			filename = "guis/assets/white"
 		path = self.find_file_path(filename)
 		if not path:
-			split = os.path.splitext(filename)
-			if split[1] == "":
-				# no extension, try tga
-				path = self.find_file_path(split[0] + ".tga")
-				if not path:
-					# no tga, try png
-					path = self.find_file_path(split[0] + ".png")
+			# try some other extensions
+			name, extension = os.path.splitext(filename)
+			if extension != ".tga":
+				path = self.find_file_path(name + ".tga")
+			if not path and extension != ".png":
+				path = self.find_file_path(name + ".png")
 		return path
 		
 	def find_files(self, pattern):
