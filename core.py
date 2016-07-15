@@ -710,7 +710,7 @@ def find_model_def_mesh(model):
 				return find_model_def_mesh(model_def.inherit)
 		else:
 			return model_def.mesh
-	return None
+	return model
 		
 def create_object_color_material():
 	name = "_object_color"
