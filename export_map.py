@@ -51,6 +51,7 @@ def create_primitive(context, obj, obj_transform, index):
 	bpy.ops.object.editmode_toggle()
 	obj = temp_obj
 	mesh = temp_mesh
+	mesh.calc_normals_split() # create face normals
 
 	# vertex position and normal are decoupled from uvs
 	# need to:
@@ -77,10 +78,11 @@ def create_primitive(context, obj, obj_transform, index):
 	for i, v in enumerate(mesh.vertices):
 		for vm in vert_map[i]:
 			uv = mesh.uv_layers[0].data[vm[1]].uv
+			loop = mesh.loops[vm[1]]
 			vert = OrderedDict()
 			vert["xyz"] = (v.co.x * core._scale_to_game, v.co.y * core._scale_to_game, v.co.z * core._scale_to_game)
 			vert["st"] = (uv.x, 1.0 - uv.y)
-			vert["normal"] = (v.normal.x, v.normal.y, v.normal.z)
+			vert["normal"] = (loop.normal.x, loop.normal.y, loop.normal.z)
 			verts.append(vert)
 	
 	# polygons
