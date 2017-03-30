@@ -1148,6 +1148,7 @@ def apply_boolean(dest, src, bool_op, flip_normals=False):
 	mod = dest.modifiers.new(name=src.name, type='BOOLEAN')
 	mod.object = ob_bool
 	mod.operation = bool_op
+	mod.solver = 'CARVE'
 	bpy.ops.object.modifier_apply(apply_as='DATA', modifier=src.name)
 
 def flip_object_normals(obj):
